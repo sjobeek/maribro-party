@@ -48,8 +48,8 @@ The vibe-coder loop is intentionally simple:
 Behind the scenes the agent should:
 
 - Scaffold a contract-compliant `games/<name>.html` via `skills/init-game/`
-- Run the verify-fix loop via `skills/verify/` until it passes
-- Upload to the host via `POST /api/games` (the included `export.sh` is the reference CLI)
+- Run the verify-fix loop via `skills/verify-game/` until it passes
+- Upload to the host via `POST /api/games` (the included `backend/export.sh` is the reference CLI)
 
 After “send it”, the game appears in the host lobby and can be played immediately.
 
@@ -76,7 +76,7 @@ From the repo root:
 
 ```bash
 uv sync
-uv run uvicorn server:app --port 8000
+uv run uvicorn backend.server:app --port 8000
 ```
 
 Then open: `http://localhost:8000`
@@ -87,7 +87,9 @@ Then open: `http://localhost:8000`
 - Technical contract: `docs/design.md`
 - Dev workflow skill: `skills/minigame-dev/SKILL.md`
 - New game scaffolding: `skills/init-game/SKILL.md`
-- Verification loop: `skills/verify/SKILL.md`
+- Verification loop: `skills/verify-game/SKILL.md`
+- Environment setup (WSL/macOS/Linux): `skills/setup/SKILL.md`
+- Host run/debug workflow: `skills/host-server/SKILL.md`
 
 ### Minigame contract (what you can build)
 
@@ -114,10 +116,25 @@ Full protocol + schemas live in `docs/design.md`.
 
 ## Repo layout
 
-- `server.py`: FastAPI host server
+- `backend/server.py`: FastAPI host server
 - `public/`: host UI + `maribro-sdk.js` + avatars
 - `games/`: minigame HTML files
-- `scripts/verify.py`: contract verification (run before export)
-- `export.sh`: verify + upload helper
+- `skills/verify-game/scripts/verify.py`: contract verification (run before export)
+- `backend/export.sh`: verify + upload helper
 - `data/session.json`: persisted session state (auto-created)
 
+## Verification runtime deps
+
+Default verification requires runtime E2E checks:
+
+```bash
+uv sync --extra verify
+uv run playwright install chromium
+uv run python3 skills/verify-game/scripts/verify.py games/<game>.html
+```
+
+Fallback only when environment constraints block runtime:
+
+```bash
+uv run python3 skills/verify-game/scripts/verify.py --allow-no-runtime games/<game>.html
+```

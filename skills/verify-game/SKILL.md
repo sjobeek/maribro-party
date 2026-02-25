@@ -1,6 +1,6 @@
 ---
-name: maribro-verify
-description: Validates Maribro Party minigames against the contract before export. Use when verifying a game, checking if a game is ready to export, fixing contract violations, or when the user asks to test/validate their minigame. Compatible with any AI coding agent that reads AGENTS.md and skills/.
+name: maribro-verify-game
+description: Validates Maribro Party minigames against the game contract before export. Use during the minigame dev loop when verifying a game, checking export-readiness, or fixing game-level contract/runtime violations.
 ---
 
 # Maribro Party -- Game Verification
@@ -14,10 +14,18 @@ Validate that a minigame HTML file satisfies the maribro-party contract before i
 Run the verification script against a game file:
 
 ```bash
-uv run python3 scripts/verify.py games/<game-name>.html
+uv run python3 skills/verify-game/scripts/verify.py games/<game-name>.html
 ```
 
-Exit code 0 = pass (ready to export). Exit code 1 = fail (needs fixes).
+Default mode requires runtime E2E checks. If runtime tooling is unavailable, verification fails.
+
+Use fallback mode only when environment constraints block runtime checks:
+
+```bash
+uv run python3 skills/verify-game/scripts/verify.py --allow-no-runtime games/<game-name>.html
+```
+
+Fallback mode keeps static checks and downgrades missing runtime tooling to warnings.
 
 ## Verify-Fix Loop
 
@@ -36,7 +44,7 @@ Do not stop after one round of fixes. Keep iterating until verification passes.
 
 - **Valid HTML structure** -- Parseable HTML with proper document structure
 - **Self-contained** -- No external resource references (relative SDK path is fine)
-- **Reasonable file size** -- Under 2MB
+- **Reasonable file size** -- Under 20MB
 - **Has rendering target** -- Canvas element or substantial DOM content
 - **Has score reporting** -- Posts scores back to the host via the SDK or postMessage
 - **Supports 4 players** -- Handles player indices 0-3
@@ -73,6 +81,6 @@ This catches failure modes like countdown/winner overlays that accidentally free
 
 The verifier's runtime check uses Playwright + Chromium. If runtime checks fail due to missing tooling:
 
-- Install Python deps: `uv sync`
+- Install verifier deps: `uv sync --extra verify`
 - Install browser binary: `uv run playwright install chromium`
 - If needed on Linux/WSL, install missing system browser libs (for example `libgbm1`)

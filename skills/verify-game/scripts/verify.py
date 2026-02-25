@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import argparse
 import http.server
 import shutil
 import socketserver
@@ -11,7 +12,7 @@ import tempfile
 import threading
 from pathlib import Path
 
-MAX_BYTES = 2 * 1024 * 1024
+MAX_BYTES = 20 * 1024 * 1024
 RUNTIME_SIM_MS = 9000
 RUNTIME_TIMEOUT_MS = 24000
 
@@ -45,14 +46,17 @@ def _supports_multiplayer_markers(lower: str) -> bool:
     return any(c in lower for c in checks)
 
 
-def _run_runtime_flow_check(game_path: Path) -> tuple[bool, str]:
+def _run_runtime_flow_check(game_path: Path) -> tuple[str, str]:
     try:
         from playwright.async_api import TimeoutError as PlaywrightTimeoutError
         from playwright.async_api import async_playwright
     except Exception:
         return (
-            False,
-            "playwright missing. Install deps (`uv sync`) and browser (`uv run playwright install chromium`).",
+            "unavailable",
+            (
+                "playwright missing. Install verifier deps "
+                "(`uv sync --extra verify`) and browser (`uv run playwright install chromium`)."
+            ),
         )
 
     sdk_src = game_path.parent.parent / "public" / "maribro-sdk.js"
@@ -137,26 +141,50 @@ def _run_runtime_flow_check(game_path: Path) -> tuple[bool, str]:
 
                     scores = result.get("scoresBySlot")
                     if not isinstance(scores, list):
-                        return False, "endGame payload is not an array"
+                        return "failed", "endGame payload is not an array"
                     if len(scores) < 4:
-                        return False, f"endGame payload too short: {len(scores)} (expected 4)"
+                        return "failed", f"endGame payload too short: {len(scores)} (expected 4)"
                     if not all(isinstance(x, (int, float)) for x in scores[:4]):
-                        return False, "first 4 endGame scores must be numeric"
+                        return "failed", "first 4 endGame scores must be numeric"
                     if not all(0 <= float(x) <= 10 for x in scores[:4]):
-                        return False, "endGame scores must be within 0..10 (host-effective range)"
+                        return "failed", "endGame scores must be within 0..10 (host-effective range)"
                     elapsed = int(result.get("elapsedMs", 0))
-                    return True, f"endGame observed in {elapsed}ms"
+                    return "ok", f"endGame observed in {elapsed}ms"
             except PlaywrightTimeoutError:
-                return False, "game did not call endGame before timeout"
+                return "failed", "game did not call endGame before timeout"
             except Exception as e:
                 msg = str(e)
-                if "libgbm.so.1" in msg:
+                missing_lib_match = re.search(r"error while loading shared libraries:\s*([^\s:]+)", msg)
+                if missing_lib_match:
+                    missing_lib = missing_lib_match.group(1)
                     return (
-                        False,
-                        "browser runtime missing libgbm.so.1. Install system browser libs, then rerun verify.",
+                        "unavailable",
+                        (
+                            f"browser runtime dependency missing: {missing_lib}. "
+                            "On Ubuntu/WSL, run `sudo apt-get install -y libasound2 libgbm1 libnss3 "
+                            "libatk-bridge2.0-0 libxkbcommon0`."
+                        ),
+                    )
+                if (
+                    "Executable doesn't exist" in msg
+                    or "chromium_headless_shell" in msg
+                    or "Please run the following command to download new browsers" in msg
+                ):
+                    return (
+                        "unavailable",
+                        "chromium binary is missing. Run `uv run playwright install chromium`.",
+                    )
+                if "libgbm.so.1" in msg or "Host system is missing dependencies" in msg:
+                    return (
+                        "unavailable",
+                        (
+                            "browser runtime dependencies are missing. On Ubuntu/WSL: "
+                            "`sudo apt-get install -y libasound2 libgbm1 libnss3 libatk-bridge2.0-0 "
+                            "libxkbcommon0`."
+                        ),
                     )
                 first_line = msg.splitlines()[0] if msg else "unknown runtime error"
-                return False, f"runtime check error: {first_line}"
+                return "failed", f"runtime check error: {first_line}"
             finally:
                 try:
                     await browser.close()  # type: ignore[name-defined]
@@ -171,12 +199,29 @@ def _run_runtime_flow_check(game_path: Path) -> tuple[bool, str]:
             thread.join(timeout=1.0)
 
 
-def main(argv: list[str]) -> int:
-    if len(argv) != 2:
-        print("Usage: python3 scripts/verify.py games/<game>.html")
-        return 1
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="verify.py",
+        description="Verify Maribro minigame contract checks for a single HTML file.",
+    )
+    parser.add_argument("file", help="Path to game HTML (for example: games/my-game.html)")
+    parser.add_argument(
+        "--allow-no-runtime",
+        action="store_true",
+        help="Fallback mode: if runtime tooling is unavailable, keep static checks and emit WARN instead of FAIL.",
+    )
+    parser.add_argument(
+        "--strict-runtime",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    return parser.parse_args(argv[1:])
 
-    path = Path(argv[1])
+
+def main(argv: list[str]) -> int:
+    args = parse_args(argv)
+
+    path = Path(args.file)
     if not path.exists():
         print(f"File not found: {path}")
         return 1
@@ -266,9 +311,18 @@ def main(argv: list[str]) -> int:
         fail("supports_4_players", "missing obvious 4-player markers")
 
     # 7) runtime simulation: game must actually finish and report scores
-    runtime_ok, runtime_msg = _run_runtime_flow_check(path)
-    if runtime_ok:
+    runtime_status, runtime_msg = _run_runtime_flow_check(path)
+    if runtime_status == "ok":
         ok("runtime_end_to_end", runtime_msg)
+    elif runtime_status == "unavailable":
+        allow_fallback = args.allow_no_runtime
+        if args.strict_runtime:
+            allow_fallback = False
+        if allow_fallback:
+            warn("runtime_end_to_end", runtime_msg + " (static checks still ran)")
+        else:
+            had_fail = True
+            fail("runtime_end_to_end", runtime_msg)
     else:
         had_fail = True
         fail("runtime_end_to_end", runtime_msg)
@@ -285,4 +339,3 @@ def main(argv: list[str]) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main(sys.argv))
-

@@ -306,11 +306,13 @@ Automated validation ensures games satisfy the minigame contract before they rea
 - Has a rendering target (canvas or DOM)
 - Has score reporting (postMessage or SDK call)
 - Uses the SDK (required)
+- Runtime completion flow (game reaches `endGame` with host-effective scores)
 
 **Warnings (non-blocking):**
 - Missing metadata tags (title, description, author)
 
-The verify skill (`skills/verify/`) wraps the script with agent-level intelligence: interpret failures, apply fixes, and re-verify in a loop.
+The verify skill (`skills/verify-game/`) wraps the script with agent-level intelligence: interpret failures, apply fixes, and re-verify in a loop.
+The script lives at `skills/verify-game/scripts/verify.py`. By default it requires runtime E2E checks and fails if tooling is missing. Use `--allow-no-runtime` only as a temporary fallback when environment constraints block runtime checks.
 
 Integration points:
 1. **Export process** -- Runs verification before uploading. Aborts on failure.
@@ -323,10 +325,9 @@ Integration points:
 maribro-party/
 ├── AGENTS.md                 # Project concept and agent background
 ├── pyproject.toml            # Python deps (uv-first)
-├── server.py                 # FastAPI host server
-├── export.sh                 # CLI helper: verify + push a game to the host
-├── scripts/
-│   └── verify.py             # Game contract validation
+├── backend/
+│   ├── server.py             # FastAPI host server
+│   └── export.sh             # CLI helper: verify + push a game to the host
 ├── public/
 │   ├── index.html            # Host SPA (lobby, game frame, results)
 │   ├── style.css
@@ -341,8 +342,19 @@ maribro-party/
 │   │   └── SKILL.md          # Agent skill: scaffold a new game
 │   ├── minigame-dev/
 │   │   └── SKILL.md          # Agent skill: dev workflow
-│   └── verify/
-│       └── SKILL.md          # Agent skill: game contract verification
+│   ├── verify-game/
+│       ├── SKILL.md          # Agent skill: game contract verification
+│       └── scripts/
+│           └── verify.py     # Verifier used by the skill/export flow
+│   ├── setup/
+│       ├── SKILL.md          # Agent skill: sets up local environment deps
+│       └── scripts/
+│           └── setup_env.py
+│   └── host-server/
+│       ├── SKILL.md          # Agent skill: run/debug host server
+│       └── scripts/
+│           ├── start_host_server.sh
+│           └── debug_host_server.sh
 ├── docs/
 │   └── design.md             # This file
 └── data/
@@ -363,7 +375,7 @@ The human-facing loop is intentionally simple and agent-driven:
 What the agent should do behind the scenes:
 
 - Scaffold via `skills/init-game/`
-- Verify/fix via `skills/verify/` until required checks pass
+- Verify/fix via `skills/verify-game/` until required checks pass
 - Upload to the host via `POST /api/games`
 
 Once uploaded, the game appears in the lobby on the big monitor — now it's real: controllers, scoring, and ratings happen on the host.

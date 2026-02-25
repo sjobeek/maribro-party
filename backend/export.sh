@@ -4,10 +4,10 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  ./export.sh --host http://HOST:8000 --avatar AVATAR_ID --file games/my-game.html [--filename my-game.html]
+  ./backend/export.sh --host http://HOST:8000 --avatar AVATAR_ID --file games/my-game.html [--filename my-game.html]
 
 What it does:
-  1) Verifies the game contract locally (scripts/verify.py)
+  1) Verifies the game contract locally (skills/verify-game/scripts/verify.py)
   2) Uploads the HTML file to the host via POST /api/games (multipart)
 
 Notes:
@@ -43,7 +43,7 @@ if [[ ! -f "$FILE" ]]; then
 fi
 
 echo "[1/2] Verifying $FILE"
-uv run python3 scripts/verify.py "$FILE"
+uv run python3 skills/verify-game/scripts/verify.py "$FILE"
 
 echo "[2/2] Uploading to $HOST/api/games"
 args=(
@@ -59,4 +59,3 @@ fi
 
 curl "${args[@]}" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin), indent=2))'
 echo "Done."
-

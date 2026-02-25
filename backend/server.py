@@ -11,14 +11,14 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent
 PUBLIC_DIR = ROOT / "public"
 GAMES_DIR = ROOT / "games"
 DATA_DIR = ROOT / "data"
 SESSION_PATH = DATA_DIR / "session.json"
 AVATARS_PATH = PUBLIC_DIR / "avatars" / "avatars.json"
 
-MAX_GAME_BYTES = 2 * 1024 * 1024
+MAX_GAME_BYTES = 20 * 1024 * 1024
 
 
 def _now_iso() -> str:
@@ -411,4 +411,3 @@ def api_avatars() -> Dict[str, Any]:
 # Static serving is mounted last so `/api/*` routes win.
 app.mount("/games", StaticFiles(directory=str(GAMES_DIR), html=True), name="games")
 app.mount("/", StaticFiles(directory=str(PUBLIC_DIR), html=True), name="public")
-

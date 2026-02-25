@@ -84,7 +84,6 @@
         activeSlots: [],
         scores: [0, 0, 0, 0],
         scoreAcc: [0, 0, 0, 0],
-        scoreOffsetBySlot: [0, 0, 0, 0],
         pipes: [],
         running: false,
         ended: false,
@@ -129,7 +128,6 @@
         world.activeSlots = Array.isArray(ctx.activeSlots) ? ctx.activeSlots.slice() : Maribro.getActiveSlots();
         world.scores = [0, 0, 0, 0];
         world.scoreAcc = [0, 0, 0, 0];
-        world.scoreOffsetBySlot = [0, 0, 0, 0];
         world.pipes = [];
         world.spawnTimerSec = 0;
         world.running = true;
@@ -162,18 +160,6 @@
             deadAtMs: 0,
           });
           activeIdx += 1;
-        }
-
-        // Birds farther to the right have less reaction time to incoming pipes.
-        // Compensate by giving a base internal score offset equal to their x-offset.
-        const minX = world.players.reduce((acc, p) => Math.min(acc, p.x), Number.POSITIVE_INFINITY);
-        if (Number.isFinite(minX)) {
-          for (const p of world.players) {
-            const offset = Math.max(0, Math.round(p.x - minX));
-            world.scoreOffsetBySlot[p.slot] = offset;
-            world.scoreAcc[p.slot] = offset;
-            world.scores[p.slot] = offset;
-          }
         }
       }
 

@@ -43,7 +43,7 @@ Transition-screen reliability guardrail:
 
 ### 4. Verify
 
-Use the verify skill at `skills/verify/SKILL.md`. It validates the game against the minigame contract, interprets failures, fixes issues, and re-verifies in a loop.
+Use the verify skill at `skills/verify-game/SKILL.md`. It validates the game against the minigame contract, interprets failures, fixes issues, and re-verifies in a loop.
 
 ### 5. Export to host
 
