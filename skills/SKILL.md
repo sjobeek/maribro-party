@@ -1,6 +1,6 @@
 ---
 name: maribro-minigame-dev
-description: Guides vibe-coders through creating, testing, verifying, and exporting Maribro Party minigames. Use when the user wants to create a new minigame, start a local dev server, test a game with mock controllers, verify a game against the contract, or export/upload a game to the host.
+description: Guides vibe-coders through creating, testing, verifying, and exporting Maribro Party minigames. Use when the user wants to create a new minigame, start a local dev server, test a game with mock controllers, verify a game against the contract, or export/upload a game to the host. Compatible with any AI coding agent that reads AGENTS.md and skills/.
 ---
 
 # Maribro Party -- Minigame Development
@@ -9,81 +9,44 @@ description: Guides vibe-coders through creating, testing, verifying, and export
 
 Read the project design before starting: [docs/design.md](../docs/design.md)
 
-Each minigame is a single self-contained HTML file in `games/`. The full contract (controller input, scoring, player info) is documented in the design doc.
+Each minigame is a single self-contained HTML file in `games/`. The full contract (controller input, scoring, player info, communication protocol) is documented in the design doc.
 
-## Quick Start
+## Workflow
 
-### 1. Scaffold a new game
+### 1. Initialize a new game
 
-Copy the template:
+Use the init-game skill at `skills/init-game/SKILL.md`. It gathers the game concept and avatar ID from the user, scaffolds a contract-compliant game file, and starts the local dev server.
 
-```bash
-cp games/_template.html games/<your-game-name>.html
-```
+Skip this step if continuing work on an existing game.
 
-If `_template.html` doesn't exist yet, create a minimal game HTML file that:
-- Includes `<script src="/maribro-sdk.js"></script>` in the head
-- Has a full-viewport canvas or DOM container
-- Listens for `maribro.onReady()` to receive player info
-- Calls `maribro.endGame(scores)` when finished
-- Declares metadata via `<meta name="maribro-*">` tags
+### 2. Develop locally
 
-### 2. Start local dev server
-
-From the repo root:
-
-```bash
-python3 -m http.server 8080 --bind 0.0.0.0
-```
-
-Open in browser: `http://localhost:8080/games/<your-game-name>.html`
-
-The SDK enters mock mode automatically (keyboard controls Player 1: WASD + J/K/U/I).
+Start a local dev server from the repo root if not already running. Open the game in a browser -- the SDK enters mock mode automatically (keyboard input, placeholder players). This is for development only -- no real controllers or scoring.
 
 ### 3. Iterate
 
-Edit the game file, refresh the browser, repeat. Focus on making it fun in 30-90 seconds.
+Edit the game file, refresh the browser, repeat. Focus on making it fun in 30-90 seconds with 4 players.
 
 ### 4. Verify
 
-Run the contract verification script:
-
-```bash
-python3 scripts/verify.py games/<your-game-name>.html
-```
-
-Fix any failures. Warnings are informational but worth addressing.
+Use the verify skill at `skills/verify/SKILL.md`. It validates the game against the minigame contract, interprets failures, fixes issues, and re-verifies in a loop.
 
 ### 5. Export to host
 
-```bash
-./export.sh <host-url> games/<your-game-name>.html <your-avatar-id>
-```
+Run the export process with the host URL and creator avatar ID. The host URL is provided by whoever is running the host (LAN IP or tunnel URL).
 
-The host URL is either a LAN IP (`http://192.168.x.x:8000`) or a tunnel URL (`https://random-words.trycloudflare.com`) provided by whoever is running the host.
-
-The avatar ID identifies you as the game creator (e.g. `knight-red`, `wizard-blue`). Ask the user which avatar they've chosen.
+Once exported, the game enters the live rotation on the host -- real controllers, real scoring.
 
 ## Agent Instructions
 
 When helping a user create a minigame:
 
-1. Ask what kind of game they want (racing, arena, puzzle, reflex, etc.)
-2. Ask which avatar ID they are using (needed for export)
-3. Scaffold from the template or create a new single HTML file
-4. Implement the game with all 4 players, shared-screen rendering, and controller input
-5. Keep it simple -- games should be completable in 30-90 seconds
-6. Use the `maribro-sdk.js` helpers where possible
-7. Test by starting the local dev server and opening in a browser
-8. **Run `python3 scripts/verify.py games/<game>.html` and fix any failures** -- do this proactively during development, not just at export time
-9. When the user is happy and verification passes, export to the host
+1. **Use the init-game skill** to scaffold the game. It handles gathering the concept, avatar ID, file creation, and dev server.
+2. Implement the game with all 4 players, shared-screen rendering, and controller input.
+3. Keep it simple -- completable in 30-90 seconds.
+4. Use the SDK helpers where possible.
+5. Test locally in the browser (mock mode).
+6. **Use the verify skill** proactively during development, not just at export time.
+7. When the user is happy and verification passes, export to the host.
 
-**IMPORTANT:** Never attempt to export a game without running verify first. The export script will also run it, but catching issues early saves time.
-
-## Placeholder Status
-
-This skill is a minimal starting point. Future versions will add:
-- Live-reload dev server
-- Mock controller UI overlay showing button states
-- Virtual AI players for testing multiplayer without 4 controllers
-- Score testing harness
+**IMPORTANT:** Never attempt to export without running the verify skill first.

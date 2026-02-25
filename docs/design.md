@@ -28,11 +28,14 @@
 └─────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────┐
-│  Vibe-Coder Laptop (any number)                         │
+│  Vibe-Coder Laptop (dev + test only, no real gameplay)  │
 │                                                         │
-│  Clone repo ──▶ Cursor + Skill ──▶ Local dev server    │
-│  Edit games/_template.html ──▶ Test in browser          │
-│  ./export.sh <host-url> my-game.html ──▶ HTTP POST     │
+│  Clone repo ──▶ Agent + Skill ──▶ Local dev server     │
+│  Edit game ──▶ Test in browser (mock mode, no scoring)  │
+│  Verify skill ──▶ export ──▶ HTTP POST to host          │
+│                                                         │
+│  Games are static artifacts until they reach the host.  │
+│  No controllers, no real scoring -- just dev iteration. │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -46,392 +49,123 @@
 
 ### API Endpoints
 
-**`GET /api/games`** -- List available minigames.
-
-Returns an array of game metadata objects, scanned from HTML files in `games/`:
-```json
-[
-  {
-    "id": "bumper-balls",
-    "filename": "bumper-balls.html",
-    "title": "Bumper Balls",
-    "description": "Knock opponents off the platform!",
-    "author": "Erik",
-    "max_duration": 60
-  }
-]
-```
-
-Metadata is extracted from `<meta>` tags in the HTML file (see Minigame Contract below).
-
-**`POST /api/games`** -- Upload a new minigame.
-
-Accepts multipart form data with a single `.html` file and a `creator` field (avatar ID of the vibe-coder). Saves the file to `games/`, records creator attribution, and returns the extracted metadata. The game appears in the lobby immediately.
-
-```bash
-curl -F "game=@my-game.html" -F "creator=knight-red" http://<host>:8000/api/games
-```
-
-The server also runs server-side validation on upload and rejects games that fail basic contract checks.
-
-**`GET /api/session`** -- Current session state.
-
-Returns player info, cumulative scores, game history, and available games.
-
-**`POST /api/session/reset`** -- Reset scores and start a new session.
+- **`GET /api/games`** -- List available minigames. Returns metadata extracted from the HTML files in `games/` (title, description, author, max duration, creator avatar).
+- **`POST /api/games`** -- Upload a new minigame. Accepts the HTML file and creator avatar ID. Runs server-side validation, saves to `games/`, and makes the game immediately available in the lobby.
+- **`GET /api/session`** -- Current session state (players, cumulative scores, game history).
+- **`POST /api/session/reset`** -- Reset scores and start a new session.
 
 ### File Watching
 
-The server watches `games/` for filesystem changes (new files, modifications, deletions) using `watchfiles` or polling. The game list in the lobby updates automatically.
+The server watches `games/` for filesystem changes and automatically updates the game list in the lobby.
 
 ## Tunnel / Proxy
 
 The host can optionally run a tunnel proxy to make the upload endpoint reachable without LAN/WSL2 headaches.
 
-### Recommended: cloudflared (Cloudflare Tunnel)
+**Recommended: cloudflared** -- Run `cloudflared tunnel --url http://localhost:8000` to get a public URL. Works from WSL2, other LANs, or anywhere on the internet. No account required for quick tunnels.
 
-```bash
-# On the host Mac, after starting the server:
-cloudflared tunnel --url http://localhost:8000
-```
+**Alternative: ngrok** -- `ngrok http 8000`.
 
-This prints a public URL like `https://random-words.trycloudflare.com`. Vibe-coders use this URL to upload games -- works from WSL2, other LANs, or anywhere on the internet. No account required for quick tunnels.
-
-### Alternative: ngrok
-
-```bash
-ngrok http 8000
-```
-
-### Workflow
-
-1. Host starts the server: `python server.py`
-2. Host starts the tunnel: `cloudflared tunnel --url http://localhost:8000`
-3. Host shares the tunnel URL with vibe-coders (Slack, whiteboard, QR code, etc.)
-4. Vibe-coders export games: `./export.sh https://random-words.trycloudflare.com my-game.html`
-
-No SSH keys, no port forwarding, no WSL2 networking gymnastics.
-
-The tunnel URL also serves as a simple identifier vibe-coders can give to their AI agents: "export my game to this URL".
+The tunnel URL is a simple identifier vibe-coders can give to their AI agents: "export my game to this URL".
 
 ## Minigame Contract
 
 ### File Format
 
-Each minigame is a single `.html` file in `games/`. Everything is inlined -- no external CSS, JS, or assets (base64-encode images if needed).
+Each minigame is a single `.html` file in `games/`. Everything is inlined -- no external CSS, JS, or assets (base64-encode images if needed). During actual gameplay, the host serves the game in an iframe on the big monitor. The host handles controller input, timer enforcement, and score recording. Vibe-coder laptops only run games locally in mock mode for development.
 
 ### Metadata
 
-Games declare metadata via `<meta>` tags in `<head>`:
+Games declare metadata via `<meta>` tags in `<head>` (title, description, author, max duration). All optional -- the host uses filename as fallback for title, and 90s as default max duration.
 
-```html
-<meta name="maribro-title" content="Bumper Balls">
-<meta name="maribro-description" content="Knock opponents off the platform!">
-<meta name="maribro-author" content="Erik">
-<meta name="maribro-max-duration" content="60">
-```
+### Communication Protocol
 
-All optional. The host uses filename as fallback for title, and 90s as default max duration.
+The host and minigame iframe communicate via `postMessage`:
 
-### Receiving Player Info
-
-On load, the host sends player info to the iframe via `postMessage`:
-
-```js
-// The host sends this when the game iframe loads:
-window.postMessage({
-  type: 'maribro:init',
-  players: [
-    { index: 0, name: 'Player 1', avatarId: 'knight-red', color: '#e74c3c' },
-    { index: 1, name: 'Player 2', avatarId: 'wizard-blue', color: '#3498db' },
-    { index: 2, name: 'Player 3', avatarId: 'rogue-green', color: '#2ecc71' },
-    { index: 3, name: 'Player 4', avatarId: 'bard-yellow', color: '#f1c40f' }
-  ]
-}, '*');
-```
-
-Games listen for this to know who's playing and what colors/avatars to use.
-
-### Controller Input
-
-Games read controller input directly via the standard Gamepad API:
-
-```js
-function readInput(playerIndex) {
-  const gamepads = navigator.getGamepads();
-  const gp = gamepads[playerIndex];
-  if (!gp) return null;
-  return {
-    leftStickX: gp.axes[0],   // -1 to 1
-    leftStickY: gp.axes[1],   // -1 to 1
-    cross: gp.buttons[0].pressed,      // X / action
-    circle: gp.buttons[1].pressed,     // O / cancel
-    square: gp.buttons[2].pressed,
-    triangle: gp.buttons[3].pressed,
-    l1: gp.buttons[4].pressed,
-    r1: gp.buttons[5].pressed,
-    l2: gp.buttons[6].pressed,
-    r2: gp.buttons[7].pressed,
-    dpadUp: gp.buttons[12].pressed,
-    dpadDown: gp.buttons[13].pressed,
-    dpadLeft: gp.buttons[14].pressed,
-    dpadRight: gp.buttons[15].pressed,
-  };
-}
-```
-
-The optional `maribro-sdk.js` wraps this into a cleaner API (see below).
-
-### Reporting Scores
-
-When the game ends, post scores back to the host:
-
-```js
-window.parent.postMessage({
-  type: 'maribro:gameOver',
-  scores: [
-    { playerIndex: 0, points: 10 },
-    { playerIndex: 1, points: 5 },
-    { playerIndex: 2, points: 7 },
-    { playerIndex: 3, points: 3 }
-  ]
-}, '*');
-```
-
-Points are integers, 0-10. The host adds these to the cumulative session totals.
-
-If the game doesn't report scores before the max timer, the host awards 0 to everyone.
+- **Host -> Game**: On load, the host sends player info (indices, avatar IDs, colors) so the game knows who's playing.
+- **Game -> Host**: When the game ends, it posts scores (points per player, 0-10 scale) back to the host. If the game doesn't report scores before the max timer, the host awards 0 to everyone.
 
 ### Rendering
 
-- Shared screen: all 4 players render on a single full-viewport canvas/DOM
+- Shared screen: all 4 players visible on a single full-viewport canvas or DOM
 - Target resolution: 1920x1080 (the big monitor)
 - The iframe gets the full viewport -- games should fill it
-- Use Canvas 2D, WebGL, or DOM -- whatever suits the game
+- Canvas 2D, WebGL, or DOM-based -- whatever suits the game
 
 ## Optional SDK: maribro-sdk.js
 
-Games can include a `<script>` tag pointing to the host-served SDK for convenience:
+An optional helper script games can include for convenience. It wraps the postMessage protocol and Gamepad API into a cleaner interface:
 
-```html
-<script src="/maribro-sdk.js"></script>
-```
-
-The SDK provides:
-
-- `maribro.players` -- Array of player objects (set after init message received)
-- `maribro.getInput(playerIndex)` -- Returns normalized input state
-- `maribro.endGame(scores)` -- Posts scores to host and signals game over
-- `maribro.onReady(callback)` -- Fires when player info is received from host
-- `maribro.timeRemaining` -- Seconds left (synced from host timer)
-- `maribro.mock` -- Boolean, true when running outside the host (local dev). In mock mode, keyboard keys are mapped to controller input for testing.
-
-### Mock Mode (Local Development)
-
-When loaded outside the host iframe (e.g. opening the HTML file directly or via local dev server), the SDK enters mock mode:
-
-- Generates 4 placeholder players with default colors
-- Maps keyboard to Player 1 input: WASD = left stick, J = cross, K = circle, U = square, I = triangle
-- Players 2-4 get simple AI or are idle
-- `maribro.endGame()` logs scores to console instead of posting
-
-This lets vibe-coders test games locally without the full host setup.
+- Player info (avatars, colors)
+- Normalized controller input per player
+- Score reporting helper
+- Ready callback (fires when player info arrives from host)
+- Time remaining (synced from host timer)
+- **Mock mode**: When loaded outside the host iframe (local dev), the SDK generates placeholder players and maps keyboard input so vibe-coders can test without controllers. No scores are recorded locally -- the game file is a static artifact until exported to the host.
 
 ## Controller System
 
-### Hardware
+PS4 DualShock 4 controllers connect to the Mac via Bluetooth. The browser's Gamepad API with standard mapping provides consistent button indices. The SDK (or direct Gamepad API usage) gives games access to sticks, face buttons (Cross, Circle, Square, Triangle), shoulder buttons, and D-pad.
 
-4x PS4 DualShock 4 controllers connected to the Mac via Bluetooth. Pairing: hold Share + PS button until the light bar flashes, then pair in macOS Bluetooth settings.
-
-### Gamepad API Mapping
-
-The browser's Gamepad API with `mapping: "standard"` provides consistent button indices for DualShock 4:
-
-| Button | Index | Usage |
-|--------|-------|-------|
-| Cross (X) | 0 | Primary action, confirm |
-| Circle (O) | 1 | Secondary action, cancel |
-| Square | 2 | Game-specific |
-| Triangle | 3 | Game-specific |
-| L1 | 4 | Game-specific |
-| R1 | 5 | Game-specific |
-| L2 | 6 | Game-specific |
-| R2 | 7 | Game-specific |
-| Share | 8 | (reserved) |
-| Options | 9 | Pause (handled by host) |
-| L3 | 10 | Game-specific |
-| R3 | 11 | Game-specific |
-| D-pad Up | 12 | Menu navigation |
-| D-pad Down | 13 | Menu navigation |
-| D-pad Left | 14 | Menu navigation |
-| D-pad Right | 15 | Menu navigation |
-| PS Button | 16 | (reserved) |
-
-Axes 0-1: Left stick (X, Y). Axes 2-3: Right stick (X, Y).
-
-### Lobby Controller Assignment
-
-The lobby includes a controller test screen where each player presses a button to claim a slot and pick their avatar. The host maps gamepad indices to player indices (0-3) based on join order.
+The lobby includes a controller test/assignment screen where each player presses a button to claim a slot and pick their avatar.
 
 ## Player Avatars
 
-~16 premade avatars, each with a dominant color and a short name. Examples:
+~16 premade avatars, each with a dominant color and a short name (e.g. `knight-red`, `wizard-blue`). Avatar images stored in `public/avatars/`. Minigames receive the avatar ID and hex color so they can render players however they like.
 
-- `knight-red` (#e74c3c), `wizard-blue` (#3498db), `rogue-green` (#2ecc71), `bard-yellow` (#f1c40f)
-- `archer-purple` (#9b59b6), `monk-orange` (#e67e22), `pirate-teal` (#1abc9c), `ninja-pink` (#e91e8f)
-- `viking-brown` (#8B4513), `samurai-indigo` (#4b0082), `robot-silver` (#95a5a6), `alien-lime` (#7fff00)
-- `dragon-crimson` (#dc143c), `ghost-white` (#ecf0f1), `demon-black` (#2c3e50), `phoenix-gold` (#ffd700)
-
-Avatar images are stored in `public/avatars/` (simple pixel art or vector SVGs). Minigames receive the avatar ID and hex color so they can render players however they like.
+The avatar list and color palette will be defined during implementation.
 
 ## Scoring
 
 ### Player Scores (from playing)
 
 - Points per game: 0-10 per player (game decides distribution)
-- Cumulative: host adds each game's points to session totals
+- Cumulative across the session
 - Persisted to `data/session.json` (survives server restart)
 
 ### Creator Scores (from making games)
 
-After each minigame's results screen, the 4 players do a quick rating -- Cross for thumbs-up, Circle for thumbs-down. This takes ~3 seconds and doesn't break the flow. The creator earns bonus points based on the rating:
+After each minigame, players do a quick thumbs-up/thumbs-down rating via controller. The creator earns bonus points based on the ratio of positive votes. Creator points are added to the same global scoreboard as player points.
 
-- 4 thumbs up: +5 creator points
-- 3 thumbs up: +3 creator points
-- 2 thumbs up: +1 creator point
-- 1 or 0 thumbs up: +0 creator points
-
-Creator points are added to the same global scoreboard as player points. The lobby leaderboard shows a combined total, with a breakdown of "play score" vs "creator score" visible on hover or in the detail view.
-
-### Session JSON Schema
-
-```json
-{
-  "started_at": "2026-02-25T19:00:00Z",
-  "participants": [
-    {
-      "avatarId": "knight-red",
-      "color": "#e74c3c",
-      "playScore": 42,
-      "creatorScore": 8,
-      "totalScore": 50
-    },
-    {
-      "avatarId": "wizard-blue",
-      "color": "#3498db",
-      "playScore": 38,
-      "creatorScore": 3,
-      "totalScore": 41
-    }
-  ],
-  "games_played": [
-    {
-      "game_id": "bumper-balls",
-      "creator_avatar": "knight-red",
-      "played_at": "2026-02-25T19:05:00Z",
-      "scores": [10, 5, 7, 3],
-      "rating": { "up": 3, "down": 1, "creator_bonus": 3 }
-    }
-  ],
-  "games_available": [
-    {
-      "id": "bumper-balls",
-      "filename": "bumper-balls.html",
-      "title": "Bumper Balls",
-      "creator_avatar": "knight-red",
-      "uploaded_at": "2026-02-25T18:50:00Z"
-    }
-  ]
-}
-```
+The lobby leaderboard shows a combined total with a breakdown of play score vs creator score.
 
 ## Lobby and Game Selection
 
-Players browse and vote using their controllers:
-
-1. Game list displayed on screen (scrollable with D-pad), showing title, creator avatar, and rating history
-2. Each player highlights a game with their cursor (color-coded)
-3. Cross (X) button to cast vote
-4. Game with most votes wins (random tiebreaker)
-5. Countdown, then game loads in iframe
-
-Alternatively, the lobby can auto-pick a random unplayed game if configured.
+Players browse and vote on the next game using their controllers. The game list shows title, creator avatar, and past ratings. Voting is quick -- a few seconds, then the winning game loads. Ties broken randomly. Can also auto-pick a random unplayed game.
 
 ## Post-Game Rating Flow
 
-After the results screen for each minigame:
-
-1. "Rate this game!" prompt appears with the creator's avatar displayed
-2. Each player presses Cross (thumbs up) or Circle (thumbs down) -- 5 second window
-3. No input counts as abstain (not counted either way)
-4. Rating is displayed briefly, creator bonus points awarded
-5. Transition back to lobby
+After the results screen: a brief "rate this game" prompt, players press a button for thumbs up or down (few seconds), rating displayed, creator bonus awarded, transition back to lobby.
 
 ## Game Verification
 
-### Purpose
+Automated validation ensures games satisfy the minigame contract before they reach the host. A verification script checks:
 
-Automated validation ensures games satisfy the minigame contract before they reach the host. This prevents broken or incomplete games from disrupting the live session.
+**Required (must pass):**
+- Valid HTML structure
+- Self-contained (no external resource references)
+- Reasonable file size
+- Has a rendering target (canvas or DOM)
+- Has score reporting (postMessage or SDK call)
+- Supports 4 players
+- Has controller input (Gamepad API or SDK)
 
-### Verification Script: `scripts/verify.py`
+**Warnings (non-blocking):**
+- Missing metadata tags (title, description, author)
 
-A standalone Python script (stdlib only, no pip deps) that checks a game HTML file against the contract. Run it locally during development and it runs automatically as part of `export.sh`.
+The verify skill (`skills/verify/`) wraps the script with agent-level intelligence: interpret failures, apply fixes, and re-verify in a loop.
 
-```bash
-python3 scripts/verify.py games/my-game.html
-```
-
-### Checks
-
-**Structural (must pass):**
-- File is valid HTML (parseable, has `<html>`, `<head>`, `<body>`)
-- File is self-contained (no external `<script src="http...">` or `<link href="http...">` tags -- `maribro-sdk.js` relative path is allowed)
-- File size is under 2MB
-- Has a `<canvas>` element or substantial DOM content for rendering
-
-**Contract (must pass):**
-- Contains a `gameOver` or `maribro:gameOver` postMessage call (score reporting)
-- References all 4 player indices (0-3) or uses a loop/array pattern for players
-- Contains Gamepad API usage (`navigator.getGamepads`) or `maribro-sdk.js` include
-
-**Metadata (warnings, non-blocking):**
-- Has `<meta name="maribro-title">` tag
-- Has `<meta name="maribro-description">` tag
-- Has `<meta name="maribro-author">` tag
-
-### Output Format
-
-```
-$ python3 scripts/verify.py games/bumper-balls.html
-
-Verifying: bumper-balls.html
-  [PASS] Valid HTML structure
-  [PASS] Self-contained (no external resources)
-  [PASS] File size OK (48KB < 2MB)
-  [PASS] Has rendering target (canvas)
-  [PASS] Has score reporting (maribro:gameOver)
-  [PASS] Supports 4 players
-  [PASS] Has controller input (Gamepad API)
-  [WARN] Missing <meta name="maribro-description">
-
-Result: PASS (1 warning)
-Ready to export!
-```
-
-Exit code 0 = pass, exit code 1 = fail (with details on what to fix).
-
-### Integration Points
-
-1. **`export.sh`** -- Runs verify before uploading. Aborts on failure.
-2. **Host server** -- Also runs basic server-side validation on `POST /api/games` as a second gate.
-3. **Agent hook** -- AGENTS.md instructs agents to run verify proactively during development, not just at export time.
+Integration points:
+1. **Export process** -- Runs verification before uploading. Aborts on failure.
+2. **Host server** -- Also runs basic validation on upload as a second gate.
+3. **Agent skill** -- Agents invoke the verify skill proactively during development.
 
 ## Directory Structure
 
 ```
 maribro-party/
 ├── AGENTS.md                 # Project concept and agent background
-├── requirements.txt          # Python deps (fastapi, uvicorn, watchfiles)
+├── requirements.txt          # Python deps
 ├── server.py                 # FastAPI host server
 ├── export.sh                 # CLI helper: verify + push a game to the host
 ├── scripts/
@@ -441,12 +175,16 @@ maribro-party/
 │   ├── style.css
 │   ├── app.js                # Host frontend logic
 │   ├── maribro-sdk.js        # Optional SDK for minigames
-│   └── avatars/              # ~16 avatar images
+│   └── avatars/              # Avatar images
 ├── games/
-│   ├── _template.html        # Starter template for vibe-coders
-│   └── (submitted games go here)
+│   ├── _template.html        # Starter template
+│   └── (submitted games)
 ├── skills/
-│   └── SKILL.md              # Cursor skill for vibe-coder workflow
+│   ├── SKILL.md              # Agent skill: dev workflow
+│   ├── init-game/
+│   │   └── SKILL.md          # Agent skill: scaffold a new game
+│   └── verify/
+│       └── SKILL.md          # Agent skill: game contract verification
 ├── docs/
 │   └── design.md             # This file
 └── data/
@@ -455,54 +193,32 @@ maribro-party/
 
 ## Vibe-Coder Workflow
 
-1. Clone the `maribro-party` repo on your laptop
-2. Open in Cursor -- the embedded skill guides you
-3. Copy `games/_template.html` to `games/my-game.html`
-4. Vibe-code your minigame (the template has the full contract wired up)
-5. Start local dev server: `python -m http.server 8080` in the repo root
-6. Open `http://localhost:8080/games/my-game.html` -- SDK enters mock mode, keyboard controls Player 1
-7. Iterate until fun
-8. Verify: `python3 scripts/verify.py games/my-game.html` (agents do this automatically)
-9. Export: `./export.sh <host-url> games/my-game.html <your-avatar-id>`
-10. Game appears in the lobby on the big monitor, attributed to your avatar
+1. Clone the repo on your laptop
+2. Open in your AI coding agent of choice -- the embedded skills guide you
+3. Tell your agent "make me a game" -- the init-game skill handles scaffolding, asks for your game concept and avatar ID, creates the file, and starts a local dev server
+4. Vibe-code your minigame (the scaffold already satisfies the contract)
+5. Test locally in mock mode (keyboard controls, no real scoring)
+6. Iterate until fun (all local dev -- no real controllers, no scores recorded)
+7. Verify using the verify skill (validates contract, fixes issues in a loop)
+8. Export to the host (verify + upload with creator attribution)
+9. Game appears in the lobby on the big monitor -- now it's real: controllers, scoring, and ratings all happen on the host
 
-## Export Script
+## Export
 
-`export.sh` runs verification, then uploads with creator attribution:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-HOST_URL="${1:?Usage: ./export.sh <host-url> <game-file> <creator-avatar-id>}"
-GAME_FILE="${2:?Usage: ./export.sh <host-url> <game-file> <creator-avatar-id>}"
-CREATOR="${3:?Usage: ./export.sh <host-url> <game-file> <creator-avatar-id>}"
-
-echo "=== Verifying $(basename "$GAME_FILE")... ==="
-python3 scripts/verify.py "$GAME_FILE"
-if [ $? -ne 0 ]; then
-  echo "Verification failed. Fix the issues above before exporting."
-  exit 1
-fi
-
-echo ""
-echo "=== Uploading to $HOST_URL as $CREATOR... ==="
-curl -f -F "game=@$GAME_FILE" -F "creator=$CREATOR" "$HOST_URL/api/games"
-echo ""
-echo "Done! Game is now available in the lobby."
-```
+The export process: run verification locally, then HTTP POST the game file and creator avatar ID to the host's upload endpoint. A CLI helper script wraps this.
 
 ## WSL2 Notes
 
-Vibe-coders developing inside WSL2:
-- **Outbound HTTP works fine** -- `curl` and `export.sh` can reach the host Mac or tunnel URL without any special config
-- **Inbound connections are the problem** -- this is why we use HTTP push (not rsync/SSH) and optionally a tunnel
-- **Local testing**: `python -m http.server 8080` inside WSL2 is reachable at `localhost:8080` from the Windows browser (WSL2 localhost forwarding)
+- **Outbound HTTP works fine** -- export can reach the host or tunnel URL without special config
+- **Inbound connections are the problem** -- this is why we use HTTP push and optionally a tunnel
+- **Local testing** -- a local dev server inside WSL2 is reachable at localhost from the Windows browser
 
-## Future Considerations
+## Future Considerations / Backlog
 
+- **"Set up local agent session" skill** -- A guided skill that walks a semi-technical participant through cloning the repo, picking an avatar, configuring their AI coding agent, and connecting to the host. Goal: one git-savvy friend can get everyone else set up.
 - WebSocket for real-time lobby updates (game list, player joins)
-- Spectator mode: other browsers can watch the big screen via a stream endpoint
-- Tournament mode: bracket-style elimination across games
-- Sound system: host plays lobby music, games handle their own audio
-- Game versioning: allow re-uploading updated versions of the same game
+- Spectator mode via stream endpoint
+- Tournament mode: bracket-style elimination
+- Sound system: host lobby music, per-game audio
+- Game versioning: re-uploading updated versions
 - Creator dashboard: web page showing your games, ratings, and creator score
