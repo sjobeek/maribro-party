@@ -2,7 +2,7 @@
 
 ## What Is This?
 
-Maribro Party is a collaborative vibe-coded minigame party framework. Think Mario Party, but the games themselves are created in real time by friends using AI-assisted coding.
+Maribro Party is a collaborative vibe-coded minigame party framework where the games themselves are created in real time by friends using AI-assisted coding.
 
 **The setup:** A group gathers around a big monitor connected to a Mac host PC with 4 PS4 DualShock 4 controllers. Players sit on the couch and play short competitive minigames back-to-back, with scores accumulating across the session. Meanwhile, other participants ("vibe-coders") sit on their own laptops, vibe-coding new minigames and hot-submitting them to the live session. The game library grows in real time as people play. Some players are probably vibe coding while they compete (sigh).
 

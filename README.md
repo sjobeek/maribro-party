@@ -1,6 +1,6 @@
 # Maribro Party
 
-Maribro Party is a *vibe-coded* Mario-Party-like minigame party framework.
+Maribro Party is an agentic meta-game: compete with friends in your own vibe-coded minigames while your agents build the next round.
 
 One machine (“the host”) runs the lobby + scoreboard on a big screen. Friends (“vibe-coders”) clone this repo and use an AI coding agent to build new minigames as single self-contained HTML files, then upload them into the live session.
 
