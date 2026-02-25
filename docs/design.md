@@ -1,5 +1,18 @@
 # Maribro Party -- Technical Design
 
+## Skills-first, agent-mediated (V1)
+
+This repo is meant to be used through AI coding agents that read `AGENTS.md` and execute the embedded skills in `skills/`.
+
+- Humans say: “start the host”, “make me a minigame”, “iterate”, “send it”.
+- Agents do: scaffold → run locally (mock mode) → verify/fix → upload → repeat.
+
+Participant “types” are hats:
+
+- **Host**: runs the lobby + server on the big screen (can also vibe-code and/or play).
+- **Vibe-coder**: builds and submits games.
+- **Player**: plays on the couch with a controller.
+
 ## Architecture Overview
 
 ```
@@ -187,14 +200,14 @@ If a game doesn't report scores before max duration, the host awards 0 to everyo
 
 ### Rendering
 
-- Shared screen: all 4 players visible on a single full-viewport canvas or DOM
+- Shared screen: all players visible on a single full-viewport canvas or DOM
 - Target resolution: 1920x1080 (the big monitor)
 - The iframe gets the full viewport -- games should fill it
 - Canvas 2D, WebGL, or DOM-based -- whatever suits the game
 
-## Optional SDK: maribro-sdk.js
+## SDK (required): maribro-sdk.js
 
-An optional helper script games can include for convenience. It wraps the postMessage protocol and Gamepad API into a cleaner interface:
+V1 requires the SDK. It wraps the postMessage protocol and Gamepad API into a cleaner interface:
 
 - Player info (avatars, colors)
 - Normalized controller input per player
@@ -292,8 +305,7 @@ Automated validation ensures games satisfy the minigame contract before they rea
 - Reasonable file size
 - Has a rendering target (canvas or DOM)
 - Has score reporting (postMessage or SDK call)
-- Supports 4 players
-- Has controller input (Gamepad API or SDK)
+- Uses the SDK (required)
 
 **Warnings (non-blocking):**
 - Missing metadata tags (title, description, author)
@@ -319,15 +331,16 @@ maribro-party/
 │   ├── index.html            # Host SPA (lobby, game frame, results)
 │   ├── style.css
 │   ├── app.js                # Host frontend logic
-│   ├── maribro-sdk.js        # Optional SDK for minigames
+│   ├── maribro-sdk.js        # Required SDK for minigames
 │   └── avatars/              # Avatar images
 ├── games/
 │   ├── _template.html        # Starter template
 │   └── (submitted games)
 ├── skills/
-│   ├── SKILL.md              # Agent skill: dev workflow
 │   ├── init-game/
 │   │   └── SKILL.md          # Agent skill: scaffold a new game
+│   ├── minigame-dev/
+│   │   └── SKILL.md          # Agent skill: dev workflow
 │   └── verify/
 │       └── SKILL.md          # Agent skill: game contract verification
 ├── docs/
@@ -338,15 +351,22 @@ maribro-party/
 
 ## Vibe-Coder Workflow
 
+The human-facing loop is intentionally simple and agent-driven:
+
 1. Clone the repo on your laptop
-2. Open in your AI coding agent of choice -- the embedded skills guide you
-3. Tell your agent "make me a game" -- the init-game skill handles scaffolding, asks for your game concept and avatar ID, creates the file, and starts a local dev server
-4. Vibe-code your minigame (the scaffold already satisfies the contract)
-5. Test locally in mock mode (keyboard controls, no real scoring)
-6. Iterate until fun (all local dev -- no real controllers, no scores recorded)
-7. Verify using the verify skill (validates contract, fixes issues in a loop)
-8. Export to the host (verify + upload with creator attribution)
-9. Game appears in the lobby on the big monitor -- now it's real: controllers, scoring, and ratings all happen on the host
+2. Open it in your AI coding agent of choice (this repo includes embedded skills in `skills/`)
+3. Tell your agent: **“make me a minigame”** (one-sentence concept + your avatar id)
+4. Playtest locally (SDK mock mode: keyboard controls)
+5. Tell your agent: **“iterate / make it fun”** until it’s ready
+6. Tell your agent: **“send it”** (provide the host URL)
+
+What the agent should do behind the scenes:
+
+- Scaffold via `skills/init-game/`
+- Verify/fix via `skills/verify/` until required checks pass
+- Upload to the host via `POST /api/games`
+
+Once uploaded, the game appears in the lobby on the big monitor — now it's real: controllers, scoring, and ratings happen on the host.
 
 ## Export
 

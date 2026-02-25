@@ -7,7 +7,7 @@ description: Guides vibe-coders through creating, testing, verifying, and export
 
 ## Context
 
-Read the project design before starting: [docs/design.md](../docs/design.md)
+Read the project design before starting: [docs/design.md](../../docs/design.md)
 
 Each minigame is a single self-contained HTML file in `games/`. The full contract (controller input, scoring, player info, communication protocol) is documented in the design doc.
 
@@ -50,3 +50,4 @@ When helping a user create a minigame:
 7. When the user is happy and verification passes, export to the host.
 
 **IMPORTANT:** Never attempt to export without running the verify skill first.
+

@@ -48,7 +48,7 @@ If not already running, start a Python HTTP server from the repo root. Tell the 
 
 ### 5. Hand off to the dev workflow
 
-The game is scaffolded and serving. From here, the main dev skill (`skills/SKILL.md`) takes over for the iterate-verify-export loop. Ask the user what gameplay they want to build first.
+The game is scaffolded and serving. From here, the main dev skill (`skills/minigame-dev/SKILL.md`) takes over for the iterate-verify-export loop. Ask the user what gameplay they want to build first.
 
 ## Agent Notes
 

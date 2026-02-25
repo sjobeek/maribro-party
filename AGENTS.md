@@ -6,11 +6,24 @@ Maribro Party is a collaborative vibe-coded minigame party framework. Think Mari
 
 **The setup:** A group gathers around a big monitor connected to a Mac host PC with 4 PS4 DualShock 4 controllers. Players sit on the couch and play short competitive minigames back-to-back, with scores accumulating across the session. Meanwhile, other participants ("vibe-coders") sit on their own laptops, vibe-coding new minigames and hot-submitting them to the live session. The game library grows in real time as people play. Some players are probably vibe coding while they compete (sigh).
 
+## Core concept: skills-first, agent-mediated
+
+This repo is designed around a simple assumption:
+
+- Humans mostly talk to **their AI coding agents**.
+- Agents use the **embedded skills** in `skills/` to scaffold, verify, and export games (and to run the host).
+
+So user loops look like: **“make me a minigame → playtest → iterate → send it”**, not “run these scripts.”
+
 ## Participants
 
 Everyone picks an avatar from the same pool of ~16 premade characters. Whether you're on the couch with a controller, on a laptop vibe-coding, or both -- you're the same avatar everywhere. Many participants will do both.
 
-**Players** (up to 4 at a time) -- Sitting at the big monitor with PS4 controllers. They pick avatars, vote on which game to play next, compete in minigames, and watch scores accumulate on the leaderboard.
+Participant “types” are hats. One person can be all of these in a single night.
+
+**Host** -- Runs the server + lobby on the big screen. The host should use an agent to start the server and manage setup.
+
+**Players** (up to 4 at a time) -- Sitting at the big monitor with controllers. They pick avatars, vote on which game to play next, compete in minigames, and watch scores accumulate on the leaderboard.
 
 **Vibe-Coders** (any number) -- On their own laptops, cloning this repo, using the embedded agent skill to scaffold and test minigames locally, then pushing finished games to the host. They have specified their avatar ID in their local repo so the host server knows who made each game.
 
@@ -57,7 +70,7 @@ All devices on the same LAN. The Mac host runs the server and displays on the bi
 
 - `AGENTS.md` -- This file. Concept and background.
 - `docs/design.md` -- Technical architecture and framework design.
-- `skills/` -- Embedded agent skills: `init-game/` to scaffold a new game, `SKILL.md` for the dev workflow, `verify/` for game validation.
+- `skills/` -- Embedded agent skills: `init-game/` to scaffold a new game, `minigame-dev/` for the dev loop, `verify/` for game validation.
 - `scripts/` -- Tooling (verification script, etc.).
 - `server.py` -- Host server (runs on the Mac).
 - `export.sh` -- CLI helper: verify + push a game to the host.
@@ -71,7 +84,7 @@ When working in this repo:
 - Read `docs/design.md` for the **authoritative V1 contract** (HTTP API shapes, `postMessage` types, `session.json` schema, scoring formula, controller mapping).
 - Each minigame is a single HTML file in `games/`. No build step, no external deps.
 - The host is Python (FastAPI + uvicorn). Keep it simple -- this is a party, not production.
-- The skills in `skills/` guide the full lifecycle: `init-game/` scaffolds a new game, `SKILL.md` drives the dev workflow, `verify/` validates before export.
+- The skills in `skills/` guide the full lifecycle: `init-game/` scaffolds a new game, `minigame-dev/` drives the dev workflow, `verify/` validates before export.
 - Prioritize fun and playability over polish. Games should be quick to build and quick to play.
 
 V1 clarifications (do not deviate unless you update the contract in `docs/design.md`):
@@ -88,6 +101,8 @@ V1 clarifications (do not deviate unless you update the contract in `docs/design
 **Before exporting any game to the host, ALWAYS use the verify skill at `skills/verify/SKILL.md`.** The verify skill validates the game against the minigame contract, interprets any failures, fixes common issues, and re-verifies in a loop until the game passes. Agents should invoke this proactively during development -- not just at export time.
 
 ## Host Quickstart (V1)
+
+The host is expected to use an AI coding agent. Humans should say “start the host”; the agent executes the commands below.
 
 - Dependency tool: **use `uv`** (assumed available on host + vibe-coder machines).
 - Install deps: `uv sync`

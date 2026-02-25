@@ -4,37 +4,46 @@ Maribro Party is a *vibe-coded* Mario-Party-like minigame party framework.
 
 One machine (“the host”) runs the lobby + scoreboard on a big screen. Friends (“vibe-coders”) clone this repo and use an AI coding agent to build new minigames as single self-contained HTML files, then upload them into the live session.
 
+## Core concept: skills-first, agent-mediated
+
+This repo assumes participants have AI coding agents and that most interactions with the codebase are **mediated by agents using skills**.
+
+- Humans say: **“start the host”**, **“make me a minigame”**, **“iterate”**, **“send it”**.
+- Agents do: scaffold → run locally (mock mode) → verify/fix → upload → repeat.
+
 ## Participants
 
+Participant “types” are hats. One person can be all of these in a single night.
+
+- **Host**: runs the lobby + server on the big screen (can also vibe-code and/or play).
 - **Players (up to 4 at a time)**: sit at the big screen with controllers, pick avatars, choose games, play, accumulate scores.
-- **Vibe-coders (any number)**: build new minigames on their laptops and export/upload them to the host while the party is running. (Many people will do both.)
+- **Vibe-coders (any number)**: build new minigames on their laptops and export/upload them to the host while the party is running.
 
 ## User workflows (front-and-center)
 
 ### Host (the big screen)
 
+**Core assumption:** the host uses an AI coding agent too. Humans mostly say what they want; agents use the repo’s skills/contract to make it happen.
+
 1. Clone this repo on the host machine.
-2. Start the server:
-
-```bash
-uv sync
-uv run uvicorn server:app --port 8000
-```
-
-3. Open the host UI in Chrome:
-   - `http://localhost:8000`
-4. Connect controllers (Gamepad API) and assign players/avatars in the UI.
-5. Tell vibe-coders the host URL (LAN IP or tunnel) so they can “send it”.
+2. Open the repo in your AI coding agent and say something like:
+   - **“Start the Maribro Party host”**
+   - **“Run the host server and tell me what URL to open”**
+3. The agent should install/run using `uv`, then tell you what to open in Chrome:
+   - usually `http://localhost:8000`
+4. Connect controllers and assign players/avatars in the UI.
+5. Tell vibe-coders the host URL (LAN IP or tunnel) so they can say **“send it”**.
 
 ### Vibe-coder (make games during the party)
 
 The vibe-coder loop is intentionally simple:
 
 1. Clone this repo.
-2. Tell your AI coding agent: **“make me a minigame”** (describe the vibe/genre in one sentence).
-3. **Playtest locally** in your browser (SDK mock mode gives keyboard controls).
-4. Say **“iterate / make it fun”** and keep tweaking until it’s good.
-5. When you’re happy, say **“send it”** (give the agent the host URL and your avatar id).
+2. Open it in your AI coding agent.
+3. Tell your agent: **“make me a minigame”** (describe the vibe/genre in one sentence).
+4. **Playtest locally** in your browser (SDK mock mode gives keyboard controls).
+5. Say **“iterate / make it fun”** and keep tweaking until it’s good.
+6. When you’re happy, say **“send it”** (give the agent the host URL and your avatar id).
 
 Behind the scenes the agent should:
 
@@ -51,19 +60,6 @@ After “send it”, the game appears in the host lobby and can be played immedi
 3. Vote on games, play short rounds, watch the leaderboard.
 4. If something is too loud/quiet, ask the host to toggle the **Audio** button.
 
-## Quickstart (host)
-
-From the repo root:
-
-```bash
-uv sync
-uv run uvicorn server:app --port 8000
-```
-
-Then open the host UI:
-
-- `http://localhost:8000`
-
 ## Technical details (for implementers/agents)
 
 ### Hosting assumptions (V1)
@@ -74,11 +70,22 @@ Then open the host UI:
 - **Network**: vibe-coders push games to the host via HTTP `POST /api/games` (LAN IP or a tunnel URL).
 - **Dependency tool**: use **`uv`** (`pyproject.toml` is the source of truth).
 
+### Host run commands (what the host agent executes)
+
+From the repo root:
+
+```bash
+uv sync
+uv run uvicorn server:app --port 8000
+```
+
+Then open: `http://localhost:8000`
+
 ### Agent skills (repo-guided workflow)
 
 - Project overview + constraints: `AGENTS.md`
 - Technical contract: `docs/design.md`
-- Dev workflow skill: `skills/SKILL.md`
+- Dev workflow skill: `skills/minigame-dev/SKILL.md`
 - New game scaffolding: `skills/init-game/SKILL.md`
 - Verification loop: `skills/verify/SKILL.md`
 
