@@ -68,12 +68,31 @@ All devices on the same LAN. The Mac host runs the server and displays on the bi
 ## Agent Notes
 
 When working in this repo:
-- Read `docs/design.md` for the technical contract (minigame API, scoring protocol, controller mapping).
+- Read `docs/design.md` for the **authoritative V1 contract** (HTTP API shapes, `postMessage` types, `session.json` schema, scoring formula, controller mapping).
 - Each minigame is a single HTML file in `games/`. No build step, no external deps.
 - The host is Python (FastAPI + uvicorn). Keep it simple -- this is a party, not production.
 - The skills in `skills/` guide the full lifecycle: `init-game/` scaffolds a new game, `SKILL.md` drives the dev workflow, `verify/` validates before export.
 - Prioritize fun and playability over polish. Games should be quick to build and quick to play.
 
+V1 clarifications (do not deviate unless you update the contract in `docs/design.md`):
+
+- Controller model: **minigames read the Gamepad API directly inside the iframe**; host assigns slot→`gamepadIndex`.
+- Host browser: standardize on **Chrome/Chromium** on the host for best Gamepad API consistency.
+- Iframe communication: all messages are `{ type, payload }` and use the `maribro:*` types in the design doc.
+- SDK requirement: **all minigames must include** `<script src="/maribro-sdk.js"></script>`.
+- 2+ players: games should use `ctx.activeSlots` / `Maribro.getActiveSlots()` and “run” with 2+ active slots (inactive slots should be ignored/idle).
+- Audio (opt-in): if the user asks for sound, implement it via `Maribro.audio.playNote(...)`. **Implicit opt-in**: the first `playNote` call disables SDK fallback bloops automatically.
+
 ### Automated Verification (IMPORTANT)
 
 **Before exporting any game to the host, ALWAYS use the verify skill at `skills/verify/SKILL.md`.** The verify skill validates the game against the minigame contract, interprets any failures, fixes common issues, and re-verifies in a loop until the game passes. Agents should invoke this proactively during development -- not just at export time.
+
+## Host Quickstart (V1)
+
+- Dependency tool: **use `uv`** (assumed available on host + vibe-coder machines).
+- Install deps: `uv sync`
+- Run server: `uv run uvicorn server:app --port 8000`
+- Open host UI in Chrome: `http://localhost:8000`
+- Vibe-coder export flow:
+  - Verify: `uv run python3 scripts/verify.py games/<your-game>.html`
+  - Export: `./export.sh --host http://<host-ip>:8000 --avatar <avatar-id> --file games/<your-game>.html`

@@ -47,16 +47,80 @@
 - **Frontend**: Vanilla HTML/CSS/JS SPA served from `public/`
 - **Persistence**: JSON file at `data/session.json`
 
+Dependency management convention (V1): use **`uv`** for installing/running Python tooling across host + vibe-coder environments.
+
 ### API Endpoints
 
-- **`GET /api/games`** -- List available minigames. Returns metadata extracted from the HTML files in `games/` (title, description, author, max duration, creator avatar).
-- **`POST /api/games`** -- Upload a new minigame. Accepts the HTML file and creator avatar ID. Runs server-side validation, saves to `games/`, and makes the game immediately available in the lobby.
-- **`GET /api/session`** -- Current session state (players, cumulative scores, game history).
-- **`POST /api/session/reset`** -- Reset scores and start a new session.
+All JSON responses use this envelope:
+
+- Success: `{ "ok": true, ... }`
+- Failure: `{ "ok": false, "error": { "code": string, "message": string } }`
+
+**`GET /api/games`** -- List available minigames.
+
+- Response: `{ "ok": true, "games": GameSummary[] }`
+- `GameSummary`:
+  - `id: string` (stable id, usually the filename stem)
+  - `filename: string` (e.g. `button-masher.html`)
+  - `title: string`
+  - `description: string`
+  - `author: string`
+  - `creatorAvatarId: string`
+  - `maxDurationSec: number` (default 90)
+  - `uploadedAt: string` (ISO)
+
+**`POST /api/games`** -- Upload a new minigame (multipart).
+
+- Form fields:
+  - `file`: the `.html` file
+  - `creator_avatar_id`: string (must be a known avatar id)
+  - optional `filename`: string (kebab-case + `.html`); otherwise derived from upload name
+- Response: `{ "ok": true, "game": GameSummary }`
+- V1 server-side validation:
+  - Enforce `.html` extension, size limit (2MB)
+  - Parseable HTML (best-effort)
+  - **No external resources**:
+    - Disallow any `http://`, `https://`, or protocol-relative `//...` in `src=` / `href=`
+    - Allow exactly one same-origin SDK script reference: `maribro-sdk.js` or `/maribro-sdk.js`
+    - For other `src=` (images/audio/video), require `data:` URIs (single-file artifact)
+
+**`GET /api/session`** -- Current session state.
+
+- Response: `{ "ok": true, "session": SessionState }`
+
+**`POST /api/session/reset`** -- Reset scores/history and start a new session.
+
+- Response: `{ "ok": true }`
+
+**`POST /api/session/players`** -- Set which avatars + controllers occupy slots.
+
+- Body:
+  - `{ "playersBySlot": Array<{ "slot":0|1|2|3, "avatarId":string, "gamepadIndex":number }> }`
+- Response: `{ "ok": true, "session": SessionState }`
+
+**`POST /api/session/record_game`** -- Record a finished game (scores + optional ratings).
+
+- Body:
+  - `{ "gameId":string, "scoresBySlot":[number,number,number,number], "ratingsBySlot"?:[-1|0|1,-1|0|1,-1|0|1,-1|0|1] }`
+- Response: `{ "ok": true, "session": SessionState }`
+
+### Session persistence (`data/session.json`)
+
+The host persists session state as JSON so scores and history survive restarts.
+
+`SessionState` schema (V1):
+
+- `version: 1`
+- `createdAt: string` (ISO)
+- `updatedAt: string` (ISO)
+- `playersBySlot: Array<{ slot:0|1|2|3, avatarId:string, gamepadIndex:number, lockedIn:boolean }>`
+- `scoreboardByAvatarId: Record<string, { play:number, creator:number, total:number }>`
+- `history: Array<{ playedAt:string, gameId:string, creatorAvatarId:string, scoresBySlot:[number,number,number,number], ratingsBySlot?:[-1|0|1,-1|0|1,-1|0|1,-1|0|1] }>`
 
 ### File Watching
 
 The server watches `games/` for filesystem changes and automatically updates the game list in the lobby.
+V1 implementation note: this can be implemented as **frontend polling** (`GET /api/games` every ~2s) instead of true filesystem watching.
 
 ## Tunnel / Proxy
 
@@ -72,7 +136,17 @@ The tunnel URL is a simple identifier vibe-coders can give to their AI agents: "
 
 ### File Format
 
-Each minigame is a single `.html` file in `games/`. Everything is inlined -- no external CSS, JS, or assets (base64-encode images if needed). During actual gameplay, the host serves the game in an iframe on the big monitor. The host handles controller input, timer enforcement, and score recording. Vibe-coder laptops only run games locally in mock mode for development.
+Each minigame is a single `.html` file in `games/`. Everything is inlined -- no external CSS, JS, or assets (base64-encode images if needed). During actual gameplay, the host serves the game in an iframe on the big monitor.
+
+**V1 controller model (authoritative):** the minigame reads the **Gamepad API directly inside the iframe**. The host SPA is responsible for mapping player slots (`0..3`) to `navigator.getGamepads()[gamepadIndex]` indices during the controller-assignment step.
+
+The host enforces timer and records scores. Vibe-coder laptops only run games locally in mock mode for development.
+
+**V1 SDK requirement (authoritative):** minigames MUST include the SDK:
+
+`<script src="/maribro-sdk.js"></script>`
+
+This is required so gameplay, scoring, timer, audio, and mock mode behave consistently across games.
 
 ### Metadata
 
@@ -82,8 +156,34 @@ Games declare metadata via `<meta>` tags in `<head>` (title, description, author
 
 The host and minigame iframe communicate via `postMessage`:
 
-- **Host -> Game**: On load, the host sends player info (indices, avatar IDs, colors) so the game knows who's playing.
-- **Game -> Host**: When the game ends, it posts scores (points per player, 0-10 scale) back to the host. If the game doesn't report scores before the max timer, the host awards 0 to everyone.
+All messages are JSON: `{ "type": string, "payload": object }`.
+
+**Host → Game**
+
+- `maribro:init`
+  - payload:
+    - `sessionId: string`
+    - `slotToGamepadIndex: [number,number,number,number]`
+    - `playersBySlot: Array<{ slot:0|1|2|3, avatarId:string, name:string, color:string }>`
+    - `maxDurationSec: number`
+    - `startedAtMs: number` (from `performance.now()` on the host)
+- `maribro:tick`
+  - payload: `{ nowMs:number, timeRemainingMs:number }` (sent ~5–10Hz)
+- `maribro:force_end`
+  - payload: `{ reason:"timeout"|"host" }`
+
+**Game → Host**
+
+- `maribro:ready`
+  - payload: `{ sdkVersion:string }`
+- `maribro:game_end`
+  - payload: `{ scoresBySlot:[number,number,number,number], endedAtMs:number }`
+
+Validation rules:
+
+- Host only accepts messages from the iframe it created and from same-origin.
+- Host clamps scores to `[0,10]` and treats NaN as 0.
+If a game doesn't report scores before max duration, the host awards 0 to everyone.
 
 ### Rendering
 
@@ -102,6 +202,45 @@ An optional helper script games can include for convenience. It wraps the postMe
 - Ready callback (fires when player info arrives from host)
 - Time remaining (synced from host timer)
 - **Mock mode**: When loaded outside the host iframe (local dev), the SDK generates placeholder players and maps keyboard input so vibe-coders can test without controllers. No scores are recorded locally -- the game file is a static artifact until exported to the host.
+
+### SDK API (authoritative for V1)
+
+Games can use `public/maribro-sdk.js`, which exposes `window.Maribro`:
+
+- `Maribro.onReady((ctx)=>void)`
+  - `ctx.playersBySlot`
+  - `ctx.activeSlots` (array of slots with assigned avatar + controller; minimum expected is 2)
+  - `ctx.maxDurationSec`
+  - `ctx.slotToGamepadIndex`
+- `Maribro.getInput(slot:number)` → normalized:
+  - `{ axes:{lx,ly,rx,ry}, buttons:{south,east,west,north,l1,r1,l2,r2,select,start,l3,r3,dup,ddown,dleft,dright} }`
+- `Maribro.getActiveSlots(): number[]`
+- `Maribro.getTimeRemainingMs(): number`
+- `Maribro.endGame(scoresBySlot:[number,number,number,number])` (posts `maribro:game_end`)
+
+### Mock mode keyboard mapping (deterministic)
+
+Mock mode activates when the SDK does not receive `maribro:init` shortly after load. It creates 4 placeholder players and maps keyboard input:
+
+- Slot 0: `W/A/S/D` (move), `Space` (south), `LeftShift` (east)
+- Slot 1: Arrow keys (move), `Enter` (south), `/` (east)
+- Slot 2: `I/J/K/L` (move), `N` (south), `M` (east)
+- Slot 3: `T/F/G/H` (move), `R` (south), `Y` (east)
+
+### Audio (V1): opt-in with safe fallback
+
+Audio is optional for games, but we want consistent “party-safe” sound defaults.
+
+- **Default (fallback)**: if the game never plays sound, the SDK emits quiet, rate-limited “bloops” on **button-edge presses** (not analog sticks/axes).
+- **Opt-in (implicit)**: the first call to `Maribro.audio.playNote(...)` disables fallback bloops for the remainder of the run (prevents double audio).
+- **Autoplay note**: browsers may require a user gesture to start audio. The host UI provides an “Audio” button that arms audio for the active iframe.
+
+SDK audio API (minimal, MIDI-ish note events rendered via WebAudio):
+
+- `Maribro.audio.arm(): Promise<void>`
+- `Maribro.audio.setEnabled(enabled: boolean)` (host may force-mute)
+- `Maribro.audio.setMasterVolume(v: number)` (0..1, default low)
+- `Maribro.audio.playNote({ note:number, velocity?:number, durationMs?:number, instrument?: "sine"|"triangle"|"square"|"noise" })`
 
 ## Controller System
 
@@ -126,6 +265,12 @@ The avatar list and color palette will be defined during implementation.
 ### Creator Scores (from making games)
 
 After each minigame, players do a quick thumbs-up/thumbs-down rating via controller. The creator earns bonus points based on the ratio of positive votes. Creator points are added to the same global scoreboard as player points.
+
+V1 concrete formula:
+
+- `pos = count(rating == 1)`, `neg = count(rating == -1)`, `votes = pos + neg`
+- If `votes == 0`: creator bonus = `0`
+- Else: creator bonus = `round(10 * pos / votes)` (0..10)
 
 The lobby leaderboard shows a combined total with a breakdown of play score vs creator score.
 
@@ -165,7 +310,7 @@ Integration points:
 ```
 maribro-party/
 ├── AGENTS.md                 # Project concept and agent background
-├── requirements.txt          # Python deps
+├── pyproject.toml            # Python deps (uv-first)
 ├── server.py                 # FastAPI host server
 ├── export.sh                 # CLI helper: verify + push a game to the host
 ├── scripts/
@@ -222,3 +367,4 @@ The export process: run verification locally, then HTTP POST the game file and c
 - Sound system: host lobby music, per-game audio
 - Game versioning: re-uploading updated versions
 - Creator dashboard: web page showing your games, ratings, and creator score
+- Single-file session export/import (portable “party save” bundle containing `games/` + `session.json` + manifest)

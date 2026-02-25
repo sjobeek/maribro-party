@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+
+    <meta name="title" content="Template Game" />
+    <meta name="description" content="Starter template showing Maribro SDK + scoring contract." />
+    <meta name="author" content="maribro-party" />
+    <meta name="maxDurationSec" content="45" />
+    <meta name="creatorAvatarId" content="knight-red" />
+
+    <title>Template Game</title>
+    <script src="/maribro-sdk.js"></script>
+    <style>
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        background: #050914;
+        color: rgba(255, 255, 255, 0.92);
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+        overflow: hidden;
+      }
+      #c {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      .hud {
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        display: grid;
+        gap: 8px;
+        padding: 10px 12px;
+        border-radius: 12px;
+        background: rgba(0, 0, 0, 0.35);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        backdrop-filter: blur(10px);
+      }
+      .muted {
+        color: rgba(255, 255, 255, 0.7);
+        font-size: 13px;
+      }
+      .row {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.4);
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        background: rgba(255, 255, 255, 0.06);
+        font-size: 12px;
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+    <div class="hud">
+      <div style="font-weight: 900">Template Game</div>
+      <div class="muted">Move left stick/keys. Press south/east to score.</div>
+      <div class="muted">Ends early when any player reaches 10 points.</div>
+      <div id="playersHud" class="row"></div>
+    </div>
+
+    <script>
+      const canvas = document.getElementById("c");
+      const ctx2d = canvas.getContext("2d");
+
+      const world = {
+        players: [],
+        scores: [0, 0, 0, 0],
+      };
+
+      function resize() {
+        const dpr = Math.max(1, window.devicePixelRatio || 1);
+        canvas.width = Math.floor(window.innerWidth * dpr);
+        canvas.height = Math.floor(window.innerHeight * dpr);
+        canvas.style.width = window.innerWidth + "px";
+        canvas.style.height = window.innerHeight + "px";
+        ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+      window.addEventListener("resize", resize);
+      resize();
+
+      function draw() {
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        ctx2d.clearRect(0, 0, w, h);
+
+        // background grid
+        ctx2d.globalAlpha = 0.25;
+        ctx2d.strokeStyle = "#66d9ff";
+        for (let x = 0; x < w; x += 64) {
+          ctx2d.beginPath();
+          ctx2d.moveTo(x, 0);
+          ctx2d.lineTo(x, h);
+          ctx2d.stroke();
+        }
+        for (let y = 0; y < h; y += 64) {
+          ctx2d.beginPath();
+          ctx2d.moveTo(0, y);
+          ctx2d.lineTo(w, y);
+          ctx2d.stroke();
+        }
+        ctx2d.globalAlpha = 1;
+
+        // players
+        for (const p of world.players) {
+          ctx2d.fillStyle = p.color;
+          ctx2d.beginPath();
+          ctx2d.arc(p.x, p.y, 22, 0, Math.PI * 2);
+          ctx2d.fill();
+
+          ctx2d.fillStyle = "rgba(255,255,255,0.92)";
+          ctx2d.font = "bold 14px ui-sans-serif, system-ui";
+          ctx2d.textAlign = "center";
+          ctx2d.fillText(String(p.slot + 1), p.x, p.y + 5);
+        }
+
+        // timer
+        const t = Math.ceil(Maribro.getTimeRemainingMs() / 1000);
+        ctx2d.fillStyle = "rgba(255,255,255,0.75)";
+        ctx2d.font = "800 14px ui-sans-serif, system-ui";
+        ctx2d.textAlign = "right";
+        ctx2d.fillText(`${t}s`, w - 16, 28);
+      }
+
+      function step() {
+        // update
+        for (const p of world.players) {
+          const input = Maribro.getInput(p.slot);
+          p.x += input.axes.lx * 6;
+          p.y += input.axes.ly * 6;
+          p.x = Math.max(24, Math.min(window.innerWidth - 24, p.x));
+          p.y = Math.max(24, Math.min(window.innerHeight - 24, p.y));
+
+          // score buttons (edge triggered)
+          const south = !!input.buttons.south;
+          const east = !!input.buttons.east;
+          if (south && !p._southWasDown) world.scores[p.slot] = Math.min(10, world.scores[p.slot] + 1);
+          if (east && !p._eastWasDown) world.scores[p.slot] = Math.min(10, world.scores[p.slot] + 2);
+          p._southWasDown = south;
+          p._eastWasDown = east;
+        }
+
+        // win condition: any player reaches 10
+        if (world.scores.some((s) => s >= 10)) {
+          Maribro.endGame(world.scores);
+          return;
+        }
+
+        draw();
+        requestAnimationFrame(step);
+      }
+
+      function renderHud(playersBySlot) {
+        const hud = document.getElementById("playersHud");
+        hud.innerHTML = "";
+        for (const p of playersBySlot) {
+          const pill = document.createElement("div");
+          pill.className = "pill";
+          pill.innerHTML = `<span class="dot" style="background:${p.color}"></span>${p.name}`;
+          hud.appendChild(pill);
+        }
+      }
+
+      Maribro.onReady((ctx) => {
+        const playersBySlot = ctx.playersBySlot || [];
+        world.players = playersBySlot.map((p, i) => ({
+          slot: p.slot ?? i,
+          name: p.name || `P${(p.slot ?? i) + 1}`,
+          color: p.color || "#888",
+          x: 120 + i * 80,
+          y: 200 + i * 60,
+          _southWasDown: false,
+          _eastWasDown: false,
+        }));
+        renderHud(playersBySlot);
+        requestAnimationFrame(step);
+      });
+    </script>
+  </body>
+</html>
+

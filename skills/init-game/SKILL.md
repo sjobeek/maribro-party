@@ -27,7 +27,7 @@ Derive a short kebab-case filename from the game concept and place it in `games/
 Create `games/<name>.html`. If `games/_template.html` exists, copy it and fill in the metadata. Otherwise, create a minimal HTML file that:
 
 - Has proper HTML document structure
-- Includes the SDK (`maribro-sdk.js`)
+- Includes the SDK (**required**) (`/maribro-sdk.js`)
 - Has a canvas or DOM rendering target
 - Wires up the `onReady` callback to receive player info
 - Has a game loop (update + draw)
@@ -36,6 +36,11 @@ Create `games/<name>.html`. If `games/_template.html` exists, copy it and fill i
 - Declares metadata via `<meta>` tags (title, description, author, max duration)
 
 The scaffold should pass the verification script out of the box.
+
+Optional (only if user asks for sound):
+
+- Use `Maribro.audio.playNote(...)` for simple SFX.
+- Remember: calling `playNote` **implicitly opts into custom audio** and disables SDK fallback bloops automatically.
 
 ### 4. Start the local dev server
 

@@ -14,7 +14,7 @@ Validate that a minigame HTML file satisfies the maribro-party contract before i
 Run the verification script against a game file:
 
 ```bash
-python3 scripts/verify.py games/<game-name>.html
+uv run python3 scripts/verify.py games/<game-name>.html
 ```
 
 Exit code 0 = pass (ready to export). Exit code 1 = fail (needs fixes).
@@ -40,11 +40,12 @@ Do not stop after one round of fixes. Keep iterating until verification passes.
 - **Has rendering target** -- Canvas element or substantial DOM content
 - **Has score reporting** -- Posts scores back to the host via the SDK or postMessage
 - **Supports 4 players** -- Handles player indices 0-3
-- **Has controller input** -- Uses the Gamepad API or includes the SDK
+- **Uses the SDK (required)** -- Includes `/maribro-sdk.js` so input/scoring/audio/mock mode are consistent
 
 ## Warnings (non-blocking)
 
 - Missing metadata tags (title, description, author)
+ - Audio is never required: games may rely on SDK fallback “bloops” or opt-in via `Maribro.audio.playNote(...)`
 
 ## When to Run
 

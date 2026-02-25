@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Maribro Party</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">Maribro Party</div>
+      <div class="status" id="status"></div>
+      <div class="actions">
+        <button id="audioBtn" class="secondary">Audio: Off</button>
+        <button id="resetSessionBtn" class="secondary">Reset session</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel left">
+        <h2>Players</h2>
+        <div id="players"></div>
+        <div class="hint">
+          Assign controllers: press any button on a gamepad, then pick an avatar for that slot.
+        </div>
+      </section>
+
+      <section class="panel center">
+        <h2>Lobby</h2>
+        <div class="row">
+          <button id="startGameBtn">Start selected game</button>
+          <button id="randomGameBtn" class="secondary">Pick random</button>
+        </div>
+        <div id="games" class="games"></div>
+        <div id="gameFrameWrap" class="game-frame-wrap hidden">
+          <div class="game-overlay">
+            <div class="pill" id="timerPill"></div>
+            <button id="endGameBtn" class="secondary">Force end</button>
+          </div>
+          <iframe id="gameFrame" class="game-frame" allow="autoplay; gamepad *"></iframe>
+        </div>
+      </section>
+
+      <section class="panel right">
+        <h2>Scores</h2>
+        <div id="scores"></div>
+        <h3>Last result</h3>
+        <div id="lastResult" class="muted">No games played yet.</div>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
+

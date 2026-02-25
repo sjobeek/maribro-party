@@ -1,0 +1,12 @@
+{
+  "avatars": [
+    { "id": "knight-red", "name": "Knight", "color": "#E53935" },
+    { "id": "wizard-blue", "name": "Wizard", "color": "#1E88E5" },
+    { "id": "slime-green", "name": "Slime", "color": "#43A047" },
+    { "id": "ghost-purple", "name": "Ghost", "color": "#8E24AA" },
+    { "id": "robot-gray", "name": "Robot", "color": "#546E7A" },
+    { "id": "banana-yellow", "name": "Banana", "color": "#FDD835" },
+    { "id": "fox-orange", "name": "Fox", "color": "#FB8C00" },
+    { "id": "ninja-black", "name": "Ninja", "color": "#212121" }
+  ]
+}

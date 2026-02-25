@@ -1,0 +1,14 @@
+[project]
+name = "maribro-party"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi",
+  "python-multipart",
+  "uvicorn[standard]",
+]
+
+[tool.uv]
+# This repo is intentionally simple (no build step); `uv` is the default way to
+# install and run the host server in both host + vibe-coder environments.
+
