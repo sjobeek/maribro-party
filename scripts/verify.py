@@ -1,11 +1,19 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import asyncio
+import http.server
+import shutil
+import socketserver
 import re
 import sys
+import tempfile
+import threading
 from pathlib import Path
 
 MAX_BYTES = 2 * 1024 * 1024
+RUNTIME_SIM_MS = 9000
+RUNTIME_TIMEOUT_MS = 24000
 
 
 def _print(kind: str, name: str, msg: str = "") -> None:
@@ -23,6 +31,144 @@ def warn(name: str, msg: str = "") -> None:
 
 def ok(name: str, msg: str = "") -> None:
     _print("PASS", name, msg)
+
+
+def _supports_multiplayer_markers(lower: str) -> bool:
+    checks = (
+        "getactiveslots",
+        "playersbyslot",
+        "[0, 0, 0, 0]",
+        "[0,0,0,0]",
+        "slot < 4",
+        "slot<=3",
+    )
+    return any(c in lower for c in checks)
+
+
+def _run_runtime_flow_check(game_path: Path) -> tuple[bool, str]:
+    try:
+        from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+        from playwright.async_api import async_playwright
+    except Exception:
+        return (
+            False,
+            "playwright missing. Install deps (`uv sync`) and browser (`uv run playwright install chromium`).",
+        )
+
+    sdk_src = game_path.parent.parent / "public" / "maribro-sdk.js"
+    if not sdk_src.exists():
+        return False, f"missing SDK file: {sdk_src}"
+
+    class QuietHandler(http.server.SimpleHTTPRequestHandler):
+        def log_message(self, _format: str, *_args: object) -> None:
+            return
+
+    class ReusableTCPServer(socketserver.TCPServer):
+        allow_reuse_address = True
+
+    with tempfile.TemporaryDirectory(prefix="maribro-verify-") as td:
+        root = Path(td)
+        shutil.copy2(game_path, root / "game.html")
+        shutil.copy2(sdk_src, root / "maribro-sdk.js")
+
+        handler = lambda *args, **kwargs: QuietHandler(*args, directory=str(root), **kwargs)
+        server = ReusableTCPServer(("127.0.0.1", 0), handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        url = f"http://127.0.0.1:{server.server_address[1]}/game.html"
+
+        async def _check() -> tuple[bool, str]:
+            try:
+                async with async_playwright() as p:
+                    browser = await p.chromium.launch(headless=True)
+                    page = await browser.new_page()
+                    await page.goto(url, wait_until="domcontentloaded")
+                    await page.wait_for_function("() => !!window.Maribro", timeout=6000)
+
+                    await page.evaluate(
+                        """(simMs) => {
+                          const original = {
+                            endGame: window.Maribro.endGame.bind(window.Maribro),
+                            getInput: window.Maribro.getInput.bind(window.Maribro),
+                          };
+                          const startedAt = performance.now();
+                          window.__verify_result = { done: false };
+
+                          window.Maribro.getTimeRemainingMs = () =>
+                            Math.max(0, simMs - (performance.now() - startedAt));
+
+                          window.Maribro.getInput = (slot) => {
+                            const base = original.getInput(slot) || {};
+                            const phase = Math.floor((performance.now() + slot * 70) / 170) % 2 === 0;
+                            return {
+                              buttons: {
+                                ...(base.buttons || {}),
+                                south: phase,
+                                east: false,
+                                west: false,
+                                north: false,
+                              },
+                              axes: {
+                                ...(base.axes || {}),
+                                lx: 0,
+                                ly: phase ? -0.7 : 0,
+                              },
+                            };
+                          };
+
+                          window.Maribro.endGame = (scoresBySlot) => {
+                            window.__verify_result = {
+                              done: true,
+                              elapsedMs: performance.now() - startedAt,
+                              scoresBySlot,
+                            };
+                            return original.endGame(scoresBySlot);
+                          };
+                        }""",
+                        RUNTIME_SIM_MS,
+                    )
+
+                    await page.wait_for_function(
+                        "() => window.__verify_result && window.__verify_result.done === true",
+                        timeout=RUNTIME_TIMEOUT_MS,
+                    )
+                    result = await page.evaluate("() => window.__verify_result")
+                    await browser.close()
+
+                    scores = result.get("scoresBySlot")
+                    if not isinstance(scores, list):
+                        return False, "endGame payload is not an array"
+                    if len(scores) < 4:
+                        return False, f"endGame payload too short: {len(scores)} (expected 4)"
+                    if not all(isinstance(x, (int, float)) for x in scores[:4]):
+                        return False, "first 4 endGame scores must be numeric"
+                    if not all(0 <= float(x) <= 10 for x in scores[:4]):
+                        return False, "endGame scores must be within 0..10 (host-effective range)"
+                    elapsed = int(result.get("elapsedMs", 0))
+                    return True, f"endGame observed in {elapsed}ms"
+            except PlaywrightTimeoutError:
+                return False, "game did not call endGame before timeout"
+            except Exception as e:
+                msg = str(e)
+                if "libgbm.so.1" in msg:
+                    return (
+                        False,
+                        "browser runtime missing libgbm.so.1. Install system browser libs, then rerun verify.",
+                    )
+                first_line = msg.splitlines()[0] if msg else "unknown runtime error"
+                return False, f"runtime check error: {first_line}"
+            finally:
+                try:
+                    await browser.close()  # type: ignore[name-defined]
+                except Exception:
+                    pass
+
+        try:
+            return asyncio.run(_check())
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=1.0)
 
 
 def main(argv: list[str]) -> int:
@@ -112,7 +258,22 @@ def main(argv: list[str]) -> int:
         had_fail = True
         fail("score_reporting", "missing Maribro.endGame or postMessage game_end")
 
-    # 6) metadata (warn only)
+    # 6) multiplayer markers
+    if _supports_multiplayer_markers(lower):
+        ok("supports_4_players")
+    else:
+        had_fail = True
+        fail("supports_4_players", "missing obvious 4-player markers")
+
+    # 7) runtime simulation: game must actually finish and report scores
+    runtime_ok, runtime_msg = _run_runtime_flow_check(path)
+    if runtime_ok:
+        ok("runtime_end_to_end", runtime_msg)
+    else:
+        had_fail = True
+        fail("runtime_end_to_end", runtime_msg)
+
+    # 8) metadata (warn only)
     for tag in ("title", "description", "author", "maxDurationSec"):
         if re.search(rf"""<meta\s+[^>]*name\s*=\s*['"]{re.escape(tag)}['"]""", html, flags=re.IGNORECASE):
             ok(f"meta:{tag}")

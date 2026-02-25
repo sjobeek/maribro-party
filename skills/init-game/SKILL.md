@@ -37,6 +37,15 @@ Create `games/<name>.html`. If `games/_template.html` exists, copy it and fill i
 
 The scaffold should pass the verification script out of the box.
 
+Default presentation guidance (recommended, not mandatory):
+
+- Include a short start countdown screen (about 2-3 seconds) before gameplay begins.
+- Include a short winner/results screen (about 2-4 seconds) after gameplay ends, showing per-player points gained for that round before reporting completion.
+- Let the vibe-coder override or remove these if they want a different feel.
+- If overlays are included, scaffold them so they cannot deadlock the game loop and so completion still reaches `Maribro.endGame(...)` (timer and/or skip path).
+- If the game shows "points gained" on its winner/results screen, those values should match the exact `scoresBySlot` payload sent via `Maribro.endGame(...)` (host-effective values), not a separate internal score metric.
+- Treat `scoresBySlot` as intentional round rewards in `0..10` decided by game logic. Default recommendation: winner gets `10`, last place gets `0`, and middle placements get game-defined values in between (ties allowed). Do not rely on last-second clamping of a raw internal score.
+
 Optional (only if user asks for sound):
 
 - Use `Maribro.audio.playNote(...)` for simple SFX.
@@ -56,3 +65,4 @@ The game is scaffolded and serving. From here, the main dev skill (`skills/minig
 - The scaffold must pass verification out of the box so the verify-fix loop starts clean.
 - Prefer copying `games/_template.html` if it exists -- it may have project-specific conventions.
 - Skip starting the dev server if one is already running.
+- By default, steer new game scaffolds toward a simple flow: start countdown -> gameplay -> short winner/results screen.

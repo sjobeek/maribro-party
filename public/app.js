@@ -6,6 +6,9 @@ const state = {
   selectedGameId: null,
   session: null,
   lastPressedGamepadIndex: null,
+  lastPressedAtMs: 0,
+  claimListeningSlot: null, // 0..3 when waiting for a button press
+  claimInFlight: false,
   activeRun: null, // { gameId, startedAtMs, maxDurationSec, tickTimer, hardTimeout }
   audioEnabled: false,
 };
@@ -63,6 +66,9 @@ function renderPlayers() {
     const av = avatarById(p.avatarId);
     const color = av?.color || "rgba(255,255,255,0.25)";
     const name = av?.name || "(unassigned)";
+    const listening = state.claimListeningSlot === slot;
+    const claimBtnText = listening ? "Press button" : "Claim pad";
+    const claimBtnClass = listening ? "secondary listening" : "secondary";
 
     const el = document.createElement("div");
     el.className = "slot";
@@ -80,7 +86,7 @@ function renderPlayers() {
               .map((a) => `<option value="${a.id}" ${a.id === p.avatarId ? "selected" : ""}>${a.name} (${a.id})</option>`)
               .join("")}
           </select>
-          <button class="secondary" data-claim="${slot}">Claim pad</button>
+          <button class="${claimBtnClass}" data-claim="${slot}">${claimBtnText}</button>
         </div>
       </div>
     `;
@@ -98,11 +104,15 @@ function renderPlayers() {
   wrap.querySelectorAll("button[data-claim]").forEach((btn) => {
     btn.addEventListener("click", async (e) => {
       const slot = Number(e.target.getAttribute("data-claim"));
-      if (state.lastPressedGamepadIndex == null) {
-        alert("Press any button on a controller first (to detect its index), then click Claim.");
-        return;
+      if (state.claimInFlight) return;
+      const isListening = state.claimListeningSlot === slot;
+      state.claimListeningSlot = isListening ? null : slot;
+      renderPlayers();
+      if (state.claimListeningSlot == null) {
+        setStatus("Claim cancelled.");
+      } else {
+        setStatus(`Slot ${slot + 1}: press any button on the controller you want to claim.`);
       }
-      await updatePlayers({ slot, gamepadIndex: state.lastPressedGamepadIndex });
     });
   });
 }
@@ -245,9 +255,11 @@ function stopActiveRun(reason) {
   state.activeRun = null;
   if (reason) postToGame("maribro:force_end", { reason });
   postToGame("maribro:audio_config", { enabled: state.audioEnabled, masterVolume: 0.25 });
-  $("gameFrameWrap").classList.add("hidden");
+  $("gameFrameWrap").classList.add("inactive");
   $("gameFrame").src = "about:blank";
   $("timerPill").textContent = "";
+  $("timerPill").classList.add("hidden");
+  $("endGameBtn").classList.add("hidden");
   setStatus("Back to lobby.");
 }
 
@@ -269,8 +281,10 @@ function startGame(game) {
     return;
   }
 
-  $("gameFrameWrap").classList.remove("hidden");
+  $("gameFrameWrap").classList.remove("inactive");
   const frame = $("gameFrame");
+  $("timerPill").classList.remove("hidden");
+  $("endGameBtn").classList.remove("hidden");
 
   const startedAtMs = performance.now();
   const maxDurationSec = Number(game.maxDurationSec || 90);
@@ -350,11 +364,30 @@ function pollGamepadsForPresses() {
     const gp = pads[i];
     if (!gp) continue;
     for (const b of gp.buttons || []) {
-      if (b?.pressed) {
-        state.lastPressedGamepadIndex = i;
+      const pressed = !!b?.pressed;
+      const analogPressed = typeof b?.value === "number" && b.value > 0.6;
+      if (!(pressed || analogPressed)) continue;
+
+      const now = performance.now();
+      if (state.lastPressedGamepadIndex === i && now - state.lastPressedAtMs < 250) return;
+      state.lastPressedGamepadIndex = i;
+      state.lastPressedAtMs = now;
+
+      if (state.claimListeningSlot != null && !state.claimInFlight) {
+        const slot = state.claimListeningSlot;
+        state.claimListeningSlot = null;
+        state.claimInFlight = true;
+        renderPlayers();
+        setStatus(`Claiming gamepad ${i} for slot ${slot + 1}…`);
+        updatePlayers({ slot, gamepadIndex: i })
+          .catch((e) => alert(`Failed to claim pad: ${e.message}`))
+          .finally(() => {
+            state.claimInFlight = false;
+          });
+      } else {
         setStatus(`Detected gamepad index ${i}. Click “Claim pad” for a slot.`);
-        return;
       }
+      return;
     }
   }
 }
@@ -421,7 +454,7 @@ async function main() {
   }, 2000);
 
   // Lightweight gamepad detection loop.
-  setInterval(pollGamepadsForPresses, 200);
+  setInterval(pollGamepadsForPresses, 80);
 
   setStatus("Ready.");
 }

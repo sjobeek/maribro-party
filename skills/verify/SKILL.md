@@ -41,6 +41,7 @@ Do not stop after one round of fixes. Keep iterating until verification passes.
 - **Has score reporting** -- Posts scores back to the host via the SDK or postMessage
 - **Supports 4 players** -- Handles player indices 0-3
 - **Uses the SDK (required)** -- Includes `/maribro-sdk.js` so input/scoring/audio/mock mode are consistent
+- **Runtime completion flow** -- Verification must run the game in a browser, simulate inputs, and confirm the game actually reaches completion and calls `endGame` with scores.
 
 ## Warnings (non-blocking)
 
@@ -52,3 +53,26 @@ Do not stop after one round of fixes. Keep iterating until verification passes.
 - **During development**: After implementing core game logic, to catch contract issues early.
 - **Before export**: Always. The export process runs it too, but catching issues earlier saves time.
 - **After significant changes**: Re-verify after refactoring game structure, scoring, or player handling.
+
+## Runtime Check Expectations
+
+Verification should include an execution check, not just static HTML checks:
+
+1. Launch the game in a browser (headless is fine).
+2. Simulate representative controller input over time.
+3. Wait for game completion.
+4. Fail if completion never happens (timeouts/frozen states).
+5. Fail if no score payload is returned at completion.
+6. Verify the returned score payload is host-effective (`scoresBySlot` numeric, length 4, values in `0..10`).
+7. Verify score design intent: `scoresBySlot` should represent deliberate round rewards (default guidance: winner `10`, last place `0`, in-between values game-defined), not merely a clamped internal metric.
+8. If a game displays "points gained" on a winner/results screen, ensure it reflects that same reported payload.
+
+This catches failure modes like countdown/winner overlays that accidentally freeze on the last frame and never report results.
+
+### Runtime Prerequisites
+
+The verifier's runtime check uses Playwright + Chromium. If runtime checks fail due to missing tooling:
+
+- Install Python deps: `uv sync`
+- Install browser binary: `uv run playwright install chromium`
+- If needed on Linux/WSL, install missing system browser libs (for example `libgbm1`)

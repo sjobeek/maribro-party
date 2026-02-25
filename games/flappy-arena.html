@@ -1,0 +1,577 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+
+    <meta name="title" content="Flappy Arena" />
+    <meta
+      name="description"
+      content="Multiplayer flappy bird clone in one shared full-screen arena."
+    />
+    <meta name="author" content="maribro-party" />
+    <meta name="maxDurationSec" content="60" />
+    <meta name="creatorAvatarId" content="knight-red" />
+
+    <title>Flappy Arena</title>
+    <script src="/maribro-sdk.js"></script>
+    <style>
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: radial-gradient(1300px 760px at 20% 20%, #2f65b3 0%, #112246 45%, #040812 95%);
+        color: rgba(255, 255, 255, 0.95);
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      }
+      #c {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      .hud {
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        padding: 10px 12px;
+        border-radius: 12px;
+        background: rgba(0, 0, 0, 0.34);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        backdrop-filter: blur(8px);
+        display: grid;
+        gap: 6px;
+      }
+      .title {
+        font-size: 15px;
+        font-weight: 900;
+        letter-spacing: 0.2px;
+      }
+      .muted {
+        color: rgba(255, 255, 255, 0.8);
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+    <div class="hud">
+      <div class="title">Flappy Arena</div>
+      <div class="muted">Press south/east/west/north to flap. Everyone shares one sky.</div>
+      <div class="muted">Dodge the side-scrolling pipes. Winner gets 10, loser gets 0.</div>
+    </div>
+
+    <script>
+      const canvas = document.getElementById("c");
+      const ctx2d = canvas.getContext("2d");
+
+      const GRAVITY = 2200;
+      const FLAP_VELOCITY = -720;
+      const PIPE_SPEED = 270;
+      const PIPE_WIDTH = 96;
+      const PIPE_GAP_HEIGHT = 200;
+      const PIPE_SPAWN_SEC = 1.3;
+      const PIPE_START_OFFSET = 180;
+      const BIRD_RADIUS = 14;
+      const SCORE_PER_PIPE = 15;
+      const SCORE_PER_SECOND = 4;
+      const WINNER_SCREEN_MS = 3200;
+      const WINNER_MIN_SKIP_MS = 900;
+
+      const world = {
+        players: [],
+        activeSlots: [],
+        scores: [0, 0, 0, 0],
+        scoreAcc: [0, 0, 0, 0],
+        scoreOffsetBySlot: [0, 0, 0, 0],
+        pipes: [],
+        running: false,
+        ended: false,
+        lastTs: 0,
+        spawnTimerSec: 0,
+        countdownMs: 3000,
+        winnerScreenMs: 0,
+        showWinnerScreen: false,
+        winnerMinMs: 0,
+        skipHeldBySlot: [false, false, false, false],
+        reportedScores: [0, 0, 0, 0],
+      };
+
+      function clamp(v, lo, hi) {
+        return Math.max(lo, Math.min(hi, v));
+      }
+
+      function resize() {
+        const dpr = Math.max(1, window.devicePixelRatio || 1);
+        canvas.width = Math.floor(window.innerWidth * dpr);
+        canvas.height = Math.floor(window.innerHeight * dpr);
+        canvas.style.width = window.innerWidth + "px";
+        canvas.style.height = window.innerHeight + "px";
+        ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+      window.addEventListener("resize", resize);
+
+      function spawnPipe() {
+        const h = window.innerHeight;
+        const margin = 30;
+        const minCenter = margin + PIPE_GAP_HEIGHT * 0.5;
+        const maxCenter = h - margin - PIPE_GAP_HEIGHT * 0.5;
+        const gapCenter = minCenter + Math.random() * Math.max(1, maxCenter - minCenter);
+        world.pipes.push({
+          x: window.innerWidth + PIPE_START_OFFSET,
+          gapCenter,
+        });
+      }
+
+      function resetWorld(ctx) {
+        world.players = [];
+        world.activeSlots = Array.isArray(ctx.activeSlots) ? ctx.activeSlots.slice() : Maribro.getActiveSlots();
+        world.scores = [0, 0, 0, 0];
+        world.scoreAcc = [0, 0, 0, 0];
+        world.scoreOffsetBySlot = [0, 0, 0, 0];
+        world.pipes = [];
+        world.spawnTimerSec = 0;
+        world.running = true;
+        world.ended = false;
+        world.lastTs = 0;
+        world.countdownMs = 3000;
+        world.winnerScreenMs = 0;
+        world.showWinnerScreen = false;
+        world.winnerMinMs = 0;
+        world.skipHeldBySlot = [false, false, false, false];
+        world.reportedScores = [0, 0, 0, 0];
+
+        const playersBySlot = Array.isArray(ctx.playersBySlot) ? ctx.playersBySlot : [];
+        const xStart = Math.max(110, window.innerWidth * 0.2);
+        const xGap = 52;
+        let activeIdx = 0;
+        for (const p of playersBySlot) {
+          const slot = p.slot ?? 0;
+          if (!world.activeSlots.includes(slot)) continue;
+          world.players.push({
+            slot,
+            name: p.name || `P${slot + 1}`,
+            color: p.color || "#90a4ff",
+            x: xStart + activeIdx * xGap,
+            y: window.innerHeight * (0.34 + activeIdx * 0.1),
+            vy: 0,
+            flapHeld: false,
+            alive: true,
+            pipesCleared: 0,
+            deadAtMs: 0,
+          });
+          activeIdx += 1;
+        }
+
+        // Birds farther to the right have less reaction time to incoming pipes.
+        // Compensate by giving a base internal score offset equal to their x-offset.
+        const minX = world.players.reduce((acc, p) => Math.min(acc, p.x), Number.POSITIVE_INFINITY);
+        if (Number.isFinite(minX)) {
+          for (const p of world.players) {
+            const offset = Math.max(0, Math.round(p.x - minX));
+            world.scoreOffsetBySlot[p.slot] = offset;
+            world.scoreAcc[p.slot] = offset;
+            world.scores[p.slot] = offset;
+          }
+        }
+      }
+
+      function drawBackground() {
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        ctx2d.clearRect(0, 0, w, h);
+
+        const t = performance.now() * 0.001;
+
+        const sky = ctx2d.createLinearGradient(0, 0, 0, h);
+        sky.addColorStop(0, "#c7ddf5");
+        sky.addColorStop(0.58, "#b8d0ee");
+        sky.addColorStop(1, "#95aed6");
+        ctx2d.fillStyle = sky;
+        ctx2d.fillRect(0, 0, w, h);
+
+        // Soft sun glow for a little depth.
+        const sun = ctx2d.createRadialGradient(w * 0.18, h * 0.2, 18, w * 0.18, h * 0.2, h * 0.32);
+        sun.addColorStop(0, "rgba(255,241,207,0.55)");
+        sun.addColorStop(1, "rgba(255,241,207,0)");
+        ctx2d.fillStyle = sun;
+        ctx2d.fillRect(0, 0, w, h);
+
+        // Three lightweight cloud puffs drifting slowly.
+        ctx2d.fillStyle = "rgba(255,255,255,0.28)";
+        for (let i = 0; i < 3; i += 1) {
+          const cx = ((w * 0.22 + i * w * 0.31 - t * (18 + i * 6)) % (w + 220)) - 110;
+          const cy = h * (0.16 + i * 0.12);
+          ctx2d.beginPath();
+          ctx2d.ellipse(cx, cy, 70, 24, 0, 0, Math.PI * 2);
+          ctx2d.fill();
+        }
+
+        // Distant rolling hills (simple parallax feel).
+        const farY = h * 0.78;
+        ctx2d.fillStyle = "rgba(106,136,130,0.52)";
+        ctx2d.beginPath();
+        ctx2d.moveTo(0, h);
+        for (let x = 0; x <= w; x += 30) {
+          const y = farY + Math.sin((x + t * 12) * 0.012) * 14;
+          ctx2d.lineTo(x, y);
+        }
+        ctx2d.lineTo(w, h);
+        ctx2d.closePath();
+        ctx2d.fill();
+
+        const nearY = h * 0.86;
+        ctx2d.fillStyle = "rgba(86,112,116,0.62)";
+        ctx2d.beginPath();
+        ctx2d.moveTo(0, h);
+        for (let x = 0; x <= w; x += 24) {
+          const y = nearY + Math.sin((x + t * 20) * 0.018 + 0.8) * 18;
+          ctx2d.lineTo(x, y);
+        }
+        ctx2d.lineTo(w, h);
+        ctx2d.closePath();
+        ctx2d.fill();
+      }
+
+      function drawPipes() {
+        const h = window.innerHeight;
+        for (const pipe of world.pipes) {
+          const gapTop = pipe.gapCenter - PIPE_GAP_HEIGHT * 0.5;
+          const gapBottom = pipe.gapCenter + PIPE_GAP_HEIGHT * 0.5;
+
+          ctx2d.fillStyle = "rgba(23, 185, 108, 0.95)";
+          ctx2d.fillRect(pipe.x, 0, PIPE_WIDTH, gapTop);
+          ctx2d.fillRect(pipe.x, gapBottom, PIPE_WIDTH, h - gapBottom);
+          ctx2d.fillStyle = "rgba(255,255,255,0.16)";
+          ctx2d.fillRect(pipe.x + 6, 0, 12, gapTop);
+          ctx2d.fillRect(pipe.x + 6, gapBottom, 12, h - gapBottom);
+
+          ctx2d.fillStyle = "rgba(20,120,70,0.95)";
+          ctx2d.fillRect(pipe.x - 4, gapTop - 14, PIPE_WIDTH + 8, 14);
+          ctx2d.fillRect(pipe.x - 4, gapBottom, PIPE_WIDTH + 8, 14);
+        }
+      }
+
+      function drawBirdsAndScores() {
+        const w = window.innerWidth;
+        const lineH = 20;
+        const baseX = Math.max(14, w * 0.55);
+        let row = 0;
+        for (const p of world.players) {
+          ctx2d.fillStyle = p.alive ? p.color : "rgba(255,255,255,0.33)";
+          ctx2d.beginPath();
+          ctx2d.arc(p.x, p.y, BIRD_RADIUS, 0, Math.PI * 2);
+          ctx2d.fill();
+
+          ctx2d.fillStyle = "rgba(0,0,0,0.33)";
+          ctx2d.beginPath();
+          ctx2d.arc(p.x + 5, p.y - 3, 2.5, 0, Math.PI * 2);
+          ctx2d.fill();
+
+          ctx2d.fillStyle = "rgba(255,255,255,0.96)";
+          ctx2d.font = "700 13px ui-sans-serif, system-ui";
+          ctx2d.textAlign = "left";
+          const score = world.scores[p.slot] || 0;
+          const status = p.alive ? "" : " (KO)";
+          ctx2d.fillText(`${p.name}: ${score}${status}`, baseX, 26 + row * lineH);
+          row += 1;
+        }
+      }
+
+      function drawTimerAndOrder() {
+        const w = window.innerWidth;
+        const tSec = Math.max(0, Math.ceil(Maribro.getTimeRemainingMs() / 1000));
+        ctx2d.fillStyle = "rgba(255,255,255,0.95)";
+        ctx2d.font = "900 30px ui-sans-serif, system-ui";
+        ctx2d.textAlign = "right";
+        ctx2d.fillText(`${tSec}s`, w - 14, 34);
+
+        const order = world.players
+          .slice()
+          .sort((a, b) => (world.scores[b.slot] || 0) - (world.scores[a.slot] || 0))
+          .map((p, i) => `${i + 1}. ${p.name} ${world.scores[p.slot] || 0}`);
+
+        ctx2d.font = "700 14px ui-sans-serif, system-ui";
+        ctx2d.textAlign = "right";
+        for (let i = 0; i < order.length; i += 1) {
+          ctx2d.fillText(order[i], w - 14, 62 + i * 18);
+        }
+      }
+
+      function drawCountdown() {
+        if (world.countdownMs <= 0) return;
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        const count = Math.ceil(world.countdownMs / 1000);
+        const label = count > 0 ? String(count) : "GO!";
+
+        ctx2d.fillStyle = "rgba(0,0,0,0.35)";
+        ctx2d.fillRect(0, 0, w, h);
+        ctx2d.fillStyle = "rgba(255,255,255,0.96)";
+        ctx2d.textAlign = "center";
+        ctx2d.font = "900 128px ui-sans-serif, system-ui";
+        ctx2d.fillText(label, w * 0.5, h * 0.52);
+        ctx2d.font = "700 22px ui-sans-serif, system-ui";
+        ctx2d.fillText("Get ready!", w * 0.5, h * 0.63);
+      }
+
+      function drawWinnerScreen() {
+        if (!world.showWinnerScreen) return;
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        const ordered = world.players
+          .slice()
+          .sort((a, b) => (world.reportedScores[b.slot] || 0) - (world.reportedScores[a.slot] || 0));
+
+        const topScore = ordered.length > 0 ? world.reportedScores[ordered[0].slot] || 0 : 0;
+        const winners = ordered.filter((p) => (world.reportedScores[p.slot] || 0) === topScore);
+        const winnerLabel =
+          winners.length <= 1
+            ? `${winners[0] ? winners[0].name : "No one"} Wins!`
+            : `Tie! ${winners.map((p) => p.name).join(" + ")}`;
+
+        ctx2d.fillStyle = "rgba(0,0,0,0.56)";
+        ctx2d.fillRect(0, 0, w, h);
+        ctx2d.textAlign = "center";
+        ctx2d.fillStyle = "rgba(255,255,255,0.98)";
+        ctx2d.font = "900 54px ui-sans-serif, system-ui";
+        ctx2d.fillText(winnerLabel, w * 0.5, h * 0.26);
+
+        ctx2d.font = "700 24px ui-sans-serif, system-ui";
+        ctx2d.fillText("Points gained this round (reported, 0-10)", w * 0.5, h * 0.35);
+
+        let rowY = h * 0.43;
+        for (const p of ordered) {
+          const gained = world.reportedScores[p.slot] || 0;
+          ctx2d.fillStyle = p.color;
+          ctx2d.fillRect(w * 0.32, rowY - 14, 14, 14);
+          ctx2d.fillStyle = "rgba(255,255,255,0.96)";
+          ctx2d.font = "700 26px ui-sans-serif, system-ui";
+          ctx2d.textAlign = "left";
+          ctx2d.fillText(`${p.name}`, w * 0.35, rowY);
+          ctx2d.textAlign = "right";
+          ctx2d.fillText(`+${gained}`, w * 0.68, rowY);
+          rowY += 38;
+        }
+
+        ctx2d.textAlign = "center";
+        ctx2d.fillStyle = "rgba(255,255,255,0.9)";
+        ctx2d.font = "700 19px ui-sans-serif, system-ui";
+        ctx2d.fillText("Press any face button to skip", w * 0.5, h * 0.9);
+      }
+
+      function winnerSkipJustPressed() {
+        let justPressed = false;
+        for (const p of world.players) {
+          const input = Maribro.getInput(p.slot);
+          const pressed =
+            !!input.buttons.south || !!input.buttons.east || !!input.buttons.west || !!input.buttons.north;
+          if (pressed && !world.skipHeldBySlot[p.slot]) justPressed = true;
+          world.skipHeldBySlot[p.slot] = pressed;
+        }
+        return justPressed;
+      }
+
+      function mapRankToRoundPoints(rawScores) {
+        const out = [0, 0, 0, 0];
+        const contenders = world.players
+          .map((p) => {
+            const v = Number(rawScores[p.slot]);
+            return { slot: p.slot, metric: Number.isFinite(v) ? v : 0 };
+          })
+          .sort((a, b) => b.metric - a.metric);
+
+        if (contenders.length === 0) return out;
+        if (contenders.length === 1) {
+          out[contenders[0].slot] = 10;
+          return out;
+        }
+
+        const pointsAtIndex = (i) => Math.round(((contenders.length - 1 - i) * 10) / (contenders.length - 1));
+        let i = 0;
+        while (i < contenders.length) {
+          let j = i;
+          while (j + 1 < contenders.length && contenders[j + 1].metric === contenders[i].metric) j += 1;
+          let sum = 0;
+          for (let k = i; k <= j; k += 1) sum += pointsAtIndex(k);
+          const tiePoints = Math.round(sum / (j - i + 1));
+          for (let k = i; k <= j; k += 1) out[contenders[k].slot] = tiePoints;
+          i = j + 1;
+        }
+        return out;
+      }
+
+      function handleInputAndPhysics(dtSec) {
+        const h = window.innerHeight;
+        for (const p of world.players) {
+          if (!p.alive) continue;
+          const input = Maribro.getInput(p.slot);
+          const flapPressed =
+            !!input.buttons.south ||
+            !!input.buttons.east ||
+            !!input.buttons.west ||
+            !!input.buttons.north ||
+            input.axes.ly < -0.55;
+
+          if (flapPressed && !p.flapHeld) {
+            p.vy = FLAP_VELOCITY;
+            Maribro.audio.playNote({
+              note: 72 + p.slot * 2,
+              velocity: 0.3,
+              durationMs: 55,
+              instrument: "triangle",
+            });
+          }
+          p.flapHeld = flapPressed;
+
+          p.vy += GRAVITY * dtSec;
+          p.y += p.vy * dtSec;
+
+          if (p.y - BIRD_RADIUS <= 0 || p.y + BIRD_RADIUS >= h) {
+            p.alive = false;
+            p.deadAtMs = Maribro.getTimeRemainingMs();
+            Maribro.audio.playNote({
+              note: 44,
+              velocity: 0.35,
+              durationMs: 120,
+              instrument: "square",
+            });
+            continue;
+          }
+
+          for (const pipe of world.pipes) {
+            const intersectsX = p.x + BIRD_RADIUS >= pipe.x && p.x - BIRD_RADIUS <= pipe.x + PIPE_WIDTH;
+            if (!intersectsX) continue;
+            const gapTop = pipe.gapCenter - PIPE_GAP_HEIGHT * 0.5;
+            const gapBottom = pipe.gapCenter + PIPE_GAP_HEIGHT * 0.5;
+            const inGap = p.y - BIRD_RADIUS >= gapTop && p.y + BIRD_RADIUS <= gapBottom;
+            if (!inGap) {
+              p.alive = false;
+              p.deadAtMs = Maribro.getTimeRemainingMs();
+              Maribro.audio.playNote({
+                note: 39,
+                velocity: 0.35,
+                durationMs: 120,
+                instrument: "sawtooth",
+              });
+              break;
+            }
+          }
+        }
+      }
+
+      function updatePipesAndScoring(dtSec) {
+        world.spawnTimerSec += dtSec;
+        while (world.spawnTimerSec >= PIPE_SPAWN_SEC) {
+          world.spawnTimerSec -= PIPE_SPAWN_SEC;
+          spawnPipe();
+        }
+
+        for (const pipe of world.pipes) {
+          pipe.x -= PIPE_SPEED * dtSec;
+        }
+        while (world.pipes.length > 0 && world.pipes[0].x + PIPE_WIDTH < -8) {
+          world.pipes.shift();
+        }
+
+        for (const p of world.players) {
+          if (!p.alive) continue;
+          let passed = 0;
+          for (const pipe of world.pipes) {
+            if (pipe._passedBy == null) pipe._passedBy = {};
+            if (!pipe._passedBy[p.slot] && pipe.x + PIPE_WIDTH < p.x - BIRD_RADIUS) {
+              pipe._passedBy[p.slot] = true;
+              passed += 1;
+            }
+          }
+          if (passed > 0) {
+            p.pipesCleared += passed;
+            Maribro.audio.playNote({
+              note: 67 + p.slot * 2,
+              velocity: 0.22,
+              durationMs: 70,
+              instrument: "triangle",
+            });
+          }
+        }
+
+        for (const p of world.players) {
+          const survivePoints = p.alive ? SCORE_PER_SECOND * dtSec : 0;
+          const pipePoints = p.pipesCleared * SCORE_PER_PIPE;
+          world.scoreAcc[p.slot] += survivePoints + pipePoints;
+          world.scores[p.slot] = Math.max(0, Math.floor(world.scoreAcc[p.slot]));
+          p.pipesCleared = 0;
+        }
+      }
+
+      function maybeEnd() {
+        if (world.ended || world.showWinnerScreen) return true;
+        const timeLeftMs = Maribro.getTimeRemainingMs();
+        const someoneAlive = world.players.some((p) => p.alive);
+        if (timeLeftMs <= 0 || !someoneAlive) {
+          world.reportedScores = mapRankToRoundPoints(world.scores);
+          world.showWinnerScreen = true;
+          world.winnerScreenMs = WINNER_SCREEN_MS;
+          world.winnerMinMs = WINNER_MIN_SKIP_MS;
+          return true;
+        }
+        return false;
+      }
+
+      function draw() {
+        drawBackground();
+        drawPipes();
+        drawBirdsAndScores();
+        drawTimerAndOrder();
+      }
+
+      function step(ts) {
+        if (!world.running) return;
+        if (!world.lastTs) world.lastTs = ts;
+        const dtSec = Math.min(0.05, Math.max(0, (ts - world.lastTs) / 1000));
+        world.lastTs = ts;
+
+        if (world.countdownMs > 0) {
+          world.countdownMs = Math.max(0, world.countdownMs - dtSec * 1000);
+          draw();
+          drawCountdown();
+          requestAnimationFrame(step);
+          return;
+        }
+
+        if (world.showWinnerScreen) {
+          world.winnerScreenMs = Math.max(0, world.winnerScreenMs - dtSec * 1000);
+          world.winnerMinMs = Math.max(0, world.winnerMinMs - dtSec * 1000);
+          draw();
+          drawWinnerScreen();
+          const skipNow = world.winnerMinMs <= 0 && winnerSkipJustPressed();
+          if (world.winnerScreenMs <= 0 || skipNow) {
+            world.ended = true;
+            world.running = false;
+            Maribro.endGame(world.reportedScores);
+            return;
+          }
+          requestAnimationFrame(step);
+          return;
+        }
+
+        handleInputAndPhysics(dtSec);
+        updatePipesAndScoring(dtSec);
+        draw();
+        const stopping = maybeEnd();
+        if (world.showWinnerScreen && !world.ended) {
+          requestAnimationFrame(step);
+          return;
+        }
+        if (!stopping) requestAnimationFrame(step);
+      }
+
+      resize();
+      Maribro.onReady((ctx) => {
+        resetWorld(ctx || {});
+        requestAnimationFrame(step);
+      });
+    </script>
+  </body>
+</html>

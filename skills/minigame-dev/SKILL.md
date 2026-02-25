@@ -27,6 +27,20 @@ Start a local dev server from the repo root if not already running. Open the gam
 
 Edit the game file, refresh the browser, repeat. Focus on making it fun in 30-90 seconds with 4 players.
 
+By default, encourage a lightweight round structure (unless the vibe-coder prefers otherwise):
+
+- Short start countdown (about 2-3 seconds) so players can get ready.
+- Main gameplay phase.
+- Short winner/results screen (about 2-4 seconds) that clearly shows points gained per player before ending the game.
+
+Transition-screen reliability guardrail:
+
+- Countdown/winner overlays must never stall the game loop.
+- Always ensure the game can still call `Maribro.endGame(...)` after overlays (timeout and/or skip button).
+- Test this explicitly in local mock mode: play to end, verify the winner screen appears, then confirm it exits and returns scores.
+- If a winner/results screen displays "points gained", display the same effective values that are sent in `Maribro.endGame(scoresBySlot)` so UI and host-recorded points cannot disagree.
+- Design `scoresBySlot` as deliberate per-round rewards in `0..10` (default pattern: winner `10`, last place `0`, middle placements game-defined). Avoid treating `scoresBySlot` as a clamped copy of a raw simulation metric.
+
 ### 4. Verify
 
 Use the verify skill at `skills/verify/SKILL.md`. It validates the game against the minigame contract, interprets failures, fixes issues, and re-verifies in a loop.
@@ -48,6 +62,7 @@ When helping a user create a minigame:
 5. Test locally in the browser (mock mode).
 6. **Use the verify skill** proactively during development, not just at export time.
 7. When the user is happy and verification passes, export to the host.
+8. Recommend small transition screens (start countdown + winner/results) as a default UX pattern, but let the vibe-coder opt out.
 
 **IMPORTANT:** Never attempt to export without running the verify skill first.
 

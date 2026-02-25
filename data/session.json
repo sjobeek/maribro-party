@@ -1,19 +1,19 @@
 {
   "version": 1,
-  "createdAt": "2026-02-25T12:09:46.018021+00:00",
-  "updatedAt": "2026-02-25T12:09:46.018021+00:00",
+  "createdAt": "2026-02-25T15:11:55.884425+00:00",
+  "updatedAt": "2026-02-25T15:22:03.101879+00:00",
   "playersBySlot": [
     {
       "slot": 0,
-      "avatarId": "",
-      "gamepadIndex": -1,
-      "lockedIn": false
+      "avatarId": "knight-red",
+      "gamepadIndex": 0,
+      "lockedIn": true
     },
     {
       "slot": 1,
-      "avatarId": "",
-      "gamepadIndex": -1,
-      "lockedIn": false
+      "avatarId": "wizard-blue",
+      "gamepadIndex": 1,
+      "lockedIn": true
     },
     {
       "slot": 2,
@@ -28,6 +28,84 @@
       "lockedIn": false
     }
   ],
-  "scoreboardByAvatarId": {},
-  "history": []
+  "scoreboardByAvatarId": {
+    "knight-red": {
+      "play": 30,
+      "creator": 0,
+      "total": 30
+    },
+    "wizard-blue": {
+      "play": 30,
+      "creator": 0,
+      "total": 30
+    }
+  },
+  "history": [
+    {
+      "playedAt": "2026-02-25T15:14:12.214240+00:00",
+      "gameId": "score-race",
+      "creatorAvatarId": "knight-red",
+      "scoresBySlot": [
+        10,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "playedAt": "2026-02-25T15:14:26.304900+00:00",
+      "gameId": "score-race",
+      "creatorAvatarId": "knight-red",
+      "scoresBySlot": [
+        10,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "playedAt": "2026-02-25T15:20:26.015485+00:00",
+      "gameId": "flappy-arena",
+      "creatorAvatarId": "knight-red",
+      "scoresBySlot": [
+        0,
+        10,
+        0,
+        0
+      ]
+    },
+    {
+      "playedAt": "2026-02-25T15:21:02.430937+00:00",
+      "gameId": "flappy-arena",
+      "creatorAvatarId": "knight-red",
+      "scoresBySlot": [
+        0,
+        10,
+        0,
+        0
+      ]
+    },
+    {
+      "playedAt": "2026-02-25T15:21:52.406459+00:00",
+      "gameId": "flappy-arena",
+      "creatorAvatarId": "knight-red",
+      "scoresBySlot": [
+        10,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "playedAt": "2026-02-25T15:22:03.101871+00:00",
+      "gameId": "flappy-arena",
+      "creatorAvatarId": "knight-red",
+      "scoresBySlot": [
+        0,
+        10,
+        0,
+        0
+      ]
+    }
+  ]
 }

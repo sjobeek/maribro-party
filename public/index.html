@@ -26,22 +26,31 @@
       </section>
 
       <section class="panel center">
-        <h2>Lobby</h2>
-        <div class="row">
-          <button id="startGameBtn">Start selected game</button>
-          <button id="randomGameBtn" class="secondary">Pick random</button>
-        </div>
-        <div id="games" class="games"></div>
-        <div id="gameFrameWrap" class="game-frame-wrap hidden">
-          <div class="game-overlay">
-            <div class="pill" id="timerPill"></div>
-            <button id="endGameBtn" class="secondary">Force end</button>
+        <div id="gameFrameWrap" class="game-frame-wrap inactive">
+          <div class="empty-state" id="emptyState">
+            <div class="title">No game running</div>
+            <div class="desc">Pick a game on the right and start it.</div>
           </div>
           <iframe id="gameFrame" class="game-frame" allow="autoplay; gamepad *"></iframe>
         </div>
       </section>
 
       <section class="panel right">
+        <div class="panel-title-row">
+          <h2>Lobby</h2>
+          <div class="run-controls">
+            <div class="pill hidden" id="timerPill"></div>
+            <button id="endGameBtn" class="secondary hidden">Force end</button>
+          </div>
+        </div>
+        <div class="row">
+          <button id="startGameBtn">Start selected game</button>
+          <button id="randomGameBtn" class="secondary">Pick random</button>
+        </div>
+        <div id="games" class="games"></div>
+
+        <hr class="divider" />
+
         <h2>Scores</h2>
         <div id="scores"></div>
         <h3>Last result</h3>
