@@ -107,8 +107,11 @@ The host is expected to use an AI coding agent. Humans should say “start the h
 - Install deps: `uv sync`
 - Run server: `uv run uvicorn backend.server:app --port 8000`
 - Open host UI in Chrome: `http://localhost:8000`
+- Default sharing mode: run `cloudflared tunnel --url http://localhost:8000` and share the tunnel URL.
+- Upload token: server requires token for `POST /api/games` (default `maribro-upload`, override with `MARIBRO_UPLOAD_TOKEN`)
 - Vibe-coder export flow:
   - Verify: `uv run python3 skills/verify-game/scripts/verify.py games/<your-game>.html`
   - If runtime tooling is missing: `uv sync --extra verify && uv run playwright install chromium`
   - Temporary fallback (environment constrained only): `uv run python3 skills/verify-game/scripts/verify.py --allow-no-runtime games/<your-game>.html`
+  - If host overrides token: `export MARIBRO_UPLOAD_TOKEN=<your-token>`
   - Export: `./backend/export.sh --host http://<host-ip>:8000 --avatar <avatar-id> --file games/<your-game>.html`

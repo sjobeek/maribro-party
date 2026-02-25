@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -19,6 +20,7 @@ SESSION_PATH = DATA_DIR / "session.json"
 AVATARS_PATH = PUBLIC_DIR / "avatars" / "avatars.json"
 
 MAX_GAME_BYTES = 20 * 1024 * 1024
+DEFAULT_UPLOAD_TOKEN = "maribro-upload"
 
 
 def _now_iso() -> str:
@@ -34,6 +36,11 @@ def _err(code: str, message: str, status_code: int = 400) -> HTTPException:
         status_code=status_code,
         detail={"ok": False, "error": {"code": code, "message": message}},
     )
+
+
+def _expected_upload_token() -> str:
+    token = os.getenv("MARIBRO_UPLOAD_TOKEN", DEFAULT_UPLOAD_TOKEN).strip()
+    return token or DEFAULT_UPLOAD_TOKEN
 
 
 def _ensure_dirs() -> None:
@@ -261,7 +268,13 @@ async def api_games_upload(
     file: UploadFile = File(...),
     creator_avatar_id: str = Form(...),
     filename: Optional[str] = Form(None),
+    upload_token: Optional[str] = Form(None),
+    x_maribro_token: Optional[str] = Header(None),
 ) -> Dict[str, Any]:
+    provided_token = (x_maribro_token or upload_token or "").strip()
+    if provided_token != _expected_upload_token():
+        raise _err("invalid_upload_token", "missing or invalid upload token", status_code=401)
+
     if not _is_known_avatar(creator_avatar_id):
         raise _err("unknown_avatar", f"unknown creator_avatar_id: {creator_avatar_id}")
 

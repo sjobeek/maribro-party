@@ -87,10 +87,16 @@ All JSON responses use this envelope:
 - Form fields:
   - `file`: the `.html` file
   - `creator_avatar_id`: string (must be a known avatar id)
+  - `upload_token`: required unless sent via `X-Maribro-Token` header
   - optional `filename`: string (kebab-case + `.html`); otherwise derived from upload name
+- Header alternative:
+  - `X-Maribro-Token`: upload token
+- Token behavior:
+  - default token: `maribro-upload`
+  - override via host env: `MARIBRO_UPLOAD_TOKEN`
 - Response: `{ "ok": true, "game": GameSummary }`
 - V1 server-side validation:
-  - Enforce `.html` extension, size limit (2MB)
+  - Enforce `.html` extension, size limit (20MB)
   - Parseable HTML (best-effort)
   - **No external resources**:
     - Disallow any `http://`, `https://`, or protocol-relative `//...` in `src=` / `href=`

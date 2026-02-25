@@ -7,7 +7,7 @@ description: Starts, checks, and debugs the Maribro host server (backend.server)
 
 ## Purpose
 
-Run the host server reliably and quickly diagnose why it is not reachable.
+Run the host server reliably and expose it through cloudflared by default.
 
 ## Start Server
 
@@ -21,6 +21,16 @@ Notes:
 - Keep this terminal open while hosting.
 - On WSL, this is the most reliable bind mode for Windows browser access.
 
+## Start Tunnel (Default Sharing Mode)
+
+In a second terminal from repo root:
+
+```bash
+bash skills/host-server/scripts/start_tunnel.sh 8000
+```
+
+Use the generated `https://...trycloudflare.com` URL as the default URL to share with phones and vibe-coders.
+
 ## Restart Server
 
 From repo root:
@@ -30,6 +40,7 @@ bash skills/host-server/scripts/restart_host_server.sh 0.0.0.0 8000
 ```
 
 This stops any existing host process on the port, then starts a fresh one.
+It does **not** restart `cloudflared`, so the tunnel URL stays the same as long as the tunnel process keeps running.
 
 ## Debug / Health Check
 
@@ -47,10 +58,10 @@ The debug script checks:
 
 ## Agent Loop
 
-1. Start server with `start_host_server.sh`.
-2. Run `debug_host_server.sh`.
-3. If output includes `ACTION_REQUIRED`, apply the suggested fix.
-4. Repeat until output includes `READY`.
+1. Start/restart server with `start_host_server.sh` or `restart_host_server.sh`.
+2. Run `debug_host_server.sh` and confirm `READY`.
+3. Start `start_tunnel.sh` and copy the tunnel URL.
+4. If output includes `ACTION_REQUIRED`, apply the suggested fix and retry.
 
 ## If Dependencies Are Missing
 

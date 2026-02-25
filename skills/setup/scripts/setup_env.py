@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 import argparse
+import os
 import platform
 import re
 import shutil
 import subprocess
-import os
 from pathlib import Path
 
 
@@ -29,6 +29,12 @@ def parse_args() -> argparse.Namespace:
         "--probe-file",
         default="games/_template.html",
         help="Game file used to probe runtime verification.",
+    )
+    parser.add_argument(
+        "--role",
+        choices=("host", "vibe-coder"),
+        default="host",
+        help="Setup profile. host includes tunnel-sharing checks; vibe-coder skips them.",
     )
     return parser.parse_args()
 
@@ -116,6 +122,7 @@ def main() -> int:
 
     print("Maribro environment setup")
     print(f"Platform: {platform.system()} {platform.release()}")
+    print(f"Role: {args.role}")
 
     uv_bin = ensure_uv()
     if not uv_bin:
@@ -180,6 +187,25 @@ def main() -> int:
     code, out = run(verify_cmd)
     print(out.strip())
     if code == 0:
+        token = os.getenv("MARIBRO_UPLOAD_TOKEN", "maribro-upload").strip() or "maribro-upload"
+        print(f"\nUpload token: {token} (override with MARIBRO_UPLOAD_TOKEN)")
+        if args.role == "host":
+            if shutil.which("cloudflared"):
+                print("Tunnel service (default sharing mode): cloudflared available.")
+                print("Run: cloudflared tunnel --url http://localhost:8000")
+            else:
+                print("ACTION_REQUIRED: cloudflared not found in PATH.")
+                print("Install cloudflared (Ubuntu/WSL):")
+                print(
+                    "cd /tmp && curl -fLO "
+                    "https://github.com/cloudflare/cloudflared/releases/latest/download/"
+                    "cloudflared-linux-amd64.deb && sudo dpkg -i cloudflared-linux-amd64.deb "
+                    "|| sudo apt-get -f install -y"
+                )
+                print("Then run: cloudflared tunnel --url http://localhost:8000")
+                return 1
+        else:
+            print("Host tunnel checks skipped for role=vibe-coder.")
         print("\nREADY: environment setup is working.")
         return 0
 

@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  ./backend/export.sh --host http://HOST:8000 --avatar AVATAR_ID --file games/my-game.html [--filename my-game.html]
+  ./backend/export.sh --host http://HOST:8000 --avatar AVATAR_ID --file games/my-game.html [--filename my-game.html] [--token TOKEN]
 
 What it does:
   1) Verifies the game contract locally (skills/verify-game/scripts/verify.py)
@@ -13,6 +13,7 @@ What it does:
 Notes:
   - Requires: curl, uv (and a local Python via uv)
   - Recommended: run via `uv` (see AGENTS.md)
+  - Upload token defaults to env `MARIBRO_UPLOAD_TOKEN` or `maribro-upload`
 EOF
 }
 
@@ -20,6 +21,7 @@ HOST=""
 AVATAR=""
 FILE=""
 FILENAME=""
+TOKEN="${MARIBRO_UPLOAD_TOKEN:-maribro-upload}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -27,6 +29,7 @@ while [[ $# -gt 0 ]]; do
     --avatar) AVATAR="${2:-}"; shift 2 ;;
     --file) FILE="${2:-}"; shift 2 ;;
     --filename) FILENAME="${2:-}"; shift 2 ;;
+    --token) TOKEN="${2:-}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown arg: $1" >&2; usage; exit 2 ;;
   esac
@@ -50,7 +53,9 @@ args=(
   -sS
   -X POST
   "$HOST/api/games"
+  -H "X-Maribro-Token: $TOKEN"
   -F "creator_avatar_id=$AVATAR"
+  -F "upload_token=$TOKEN"
   -F "file=@$FILE;type=text/html"
 )
 if [[ -n "$FILENAME" ]]; then

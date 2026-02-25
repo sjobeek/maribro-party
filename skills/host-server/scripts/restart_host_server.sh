@@ -4,6 +4,9 @@ set -euo pipefail
 HOST="${1:-0.0.0.0}"
 PORT="${2:-8000}"
 
+# Intentionally restart only the backend server process.
+# Keep cloudflared running in a separate terminal so the tunnel URL stays stable.
+
 if [[ ! -f "backend/server.py" ]]; then
   echo "ERROR: run this from repo root (missing backend/server.py)" >&2
   exit 2

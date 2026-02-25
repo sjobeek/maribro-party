@@ -31,8 +31,10 @@ Participant “types” are hats. One person can be all of these in a single nig
    - **“Run the host server and tell me what URL to open”**
 3. The agent should install/run using `uv`, then tell you what to open in Chrome:
    - usually `http://localhost:8000`
-4. Connect controllers and assign players/avatars in the UI.
-5. Tell vibe-coders the host URL (LAN IP or tunnel) so they can say **“send it”**.
+4. Start cloudflared tunnel (default sharing mode) and share that URL with phones/vibe-coders:
+   - `cloudflared tunnel --url http://localhost:8000`
+5. Connect controllers and assign players/avatars in the UI.
+6. Tell vibe-coders the host URL (prefer tunnel URL) so they can say **“send it”**.
 
 ### Vibe-coder (make games during the party)
 
@@ -68,7 +70,9 @@ After “send it”, the game appears in the host lobby and can be played immedi
 - **Host browser**: use **Chrome/Chromium** on the host for best Gamepad API consistency.
 - **Controllers**: Gamepad API (e.g. DS4 via Bluetooth on the host machine).
 - **Network**: vibe-coders push games to the host via HTTP `POST /api/games` (LAN IP or a tunnel URL).
+- **Default share URL**: use cloudflared quick tunnel URL for phones/remote devices.
 - **Dependency tool**: use **`uv`** (`pyproject.toml` is the source of truth).
+- **Upload auth (lightweight)**: `POST /api/games` requires token `maribro-upload` by default (override with `MARIBRO_UPLOAD_TOKEN` on host + vibe-coder envs).
 
 ### Host run commands (what the host agent executes)
 
@@ -80,6 +84,12 @@ uv run uvicorn backend.server:app --port 8000
 ```
 
 Then open: `http://localhost:8000`
+
+If host token is customized:
+
+```bash
+export MARIBRO_UPLOAD_TOKEN=<your-token>
+```
 
 ### Agent skills (repo-guided workflow)
 
