@@ -173,7 +173,7 @@
   function getTimeRemainingMs() {
     if (state.lastTick && typeof state.lastTick.timeRemainingMs === "number") return state.lastTick.timeRemainingMs;
     if (state.ctx && typeof state.ctx.maxDurationSec === "number") return state.ctx.maxDurationSec * 1000;
-    return 90_000;
+    return 30_000;
   }
 
   function endGame(scoresBySlot) {
@@ -195,7 +195,7 @@
       { slot: 2, avatarId: "mock-2", name: "Mock 3", color: "#43A047" },
       { slot: 3, avatarId: "mock-3", name: "Mock 4", color: "#FDD835" },
     ];
-    setReady({ playersBySlot, maxDurationSec: 90, slotToGamepadIndex: [-1, -1, -1, -1], activeSlots: [0, 1, 2, 3] });
+    setReady({ playersBySlot, maxDurationSec: 30, slotToGamepadIndex: [-1, -1, -1, -1], activeSlots: [0, 1, 2, 3] });
   }
 
   // --- Audio (opt-in) + fallback bloops ---
@@ -355,7 +355,7 @@
       setReady({
         playersBySlot: p.playersBySlot || [],
         activeSlots: p.activeSlots || null,
-        maxDurationSec: Number(p.maxDurationSec || 90),
+        maxDurationSec: Number(p.maxDurationSec || 30),
         slotToGamepadIndex: p.slotToGamepadIndex || [-1, -1, -1, -1],
       });
       post("maribro:ready", { sdkVersion: SDK_VERSION });
@@ -396,4 +396,3 @@
     __sdkVersion: SDK_VERSION,
   };
 })();
-

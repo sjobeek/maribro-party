@@ -93,7 +93,7 @@ V1 clarifications (do not deviate unless you update the contract in `docs/design
 - Controller model: **minigames read the Gamepad API directly inside the iframe**; host assigns slot→`gamepadIndex`.
 - Host browser: standardize on **Chrome/Chromium** on the host for best Gamepad API consistency.
 - Iframe communication: all messages are `{ type, payload }` and use the `maribro:*` types in the design doc.
-- SDK requirement: **all minigames must include** `<script src="/maribro-sdk.js"></script>`.
+- SDK requirement: **all minigames must include** `<script src="/public/maribro-sdk.js"></script>`.
 - 2+ players: games should use `ctx.activeSlots` / `Maribro.getActiveSlots()` and “run” with 2+ active slots (inactive slots should be ignored/idle).
 - Duration default: new minigames should set `<meta name="maxDurationSec" content="30" />` unless the user explicitly asks for a different duration.
 - Start flow requirement: all game implementations must have a 3-second countdown before live input/gameplay begins.

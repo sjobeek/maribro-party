@@ -7,11 +7,11 @@
     <meta name="title" content="Template Game" />
     <meta name="description" content="Starter template showing Maribro SDK + scoring contract." />
     <meta name="author" content="maribro-party" />
-    <meta name="maxDurationSec" content="45" />
+    <meta name="maxDurationSec" content="30" />
     <meta name="creatorAvatarId" content="knight-red" />
 
     <title>Template Game</title>
-    <script src="/maribro-sdk.js"></script>
+    <script src="/public/maribro-sdk.js"></script>
     <style>
       html,
       body {
@@ -73,7 +73,7 @@
     <div class="hud">
       <div style="font-weight: 900">Template Game</div>
       <div class="muted">Move left stick/keys. Press south/east to score.</div>
-      <div class="muted">Ends early when any player reaches 10 points.</div>
+      <div class="muted">Flow: 3s countdown -> gameplay -> results screen.</div>
       <div id="playersHud" class="row"></div>
     </div>
 
@@ -84,6 +84,10 @@
       const world = {
         players: [],
         scores: [0, 0, 0, 0],
+        phase: "countdown",
+        countdownMs: 3000,
+        resultsMs: 2800,
+        reported: false,
       };
 
       function resize() {
@@ -97,12 +101,8 @@
       window.addEventListener("resize", resize);
       resize();
 
-      function draw() {
-        const w = window.innerWidth;
-        const h = window.innerHeight;
+      function drawBackdrop(w, h) {
         ctx2d.clearRect(0, 0, w, h);
-
-        // background grid
         ctx2d.globalAlpha = 0.25;
         ctx2d.strokeStyle = "#66d9ff";
         for (let x = 0; x < w; x += 64) {
@@ -118,8 +118,9 @@
           ctx2d.stroke();
         }
         ctx2d.globalAlpha = 1;
+      }
 
-        // players
+      function drawPlayers() {
         for (const p of world.players) {
           ctx2d.fillStyle = p.color;
           ctx2d.beginPath();
@@ -131,8 +132,9 @@
           ctx2d.textAlign = "center";
           ctx2d.fillText(String(p.slot + 1), p.x, p.y + 5);
         }
+      }
 
-        // timer
+      function drawTimer(w) {
         const t = Math.ceil(Maribro.getTimeRemainingMs() / 1000);
         ctx2d.fillStyle = "rgba(255,255,255,0.75)";
         ctx2d.font = "800 14px ui-sans-serif, system-ui";
@@ -140,28 +142,104 @@
         ctx2d.fillText(`${t}s`, w - 16, 28);
       }
 
-      function step() {
-        // update
-        for (const p of world.players) {
-          const input = Maribro.getInput(p.slot);
-          p.x += input.axes.lx * 6;
-          p.y += input.axes.ly * 6;
-          p.x = Math.max(24, Math.min(window.innerWidth - 24, p.x));
-          p.y = Math.max(24, Math.min(window.innerHeight - 24, p.y));
+      function drawCountdown(w, h) {
+        const n = Math.max(1, Math.ceil(world.countdownMs / 1000));
+        ctx2d.fillStyle = "rgba(0,0,0,0.5)";
+        ctx2d.fillRect(0, 0, w, h);
+        ctx2d.fillStyle = "#fff";
+        ctx2d.textAlign = "center";
+        ctx2d.font = "900 96px ui-sans-serif, system-ui";
+        ctx2d.fillText(String(n), w * 0.5, h * 0.5);
+        ctx2d.font = "700 24px ui-sans-serif, system-ui";
+        ctx2d.fillText("Get Ready", w * 0.5, h * 0.62);
+      }
 
-          // score buttons (edge triggered)
-          const south = !!input.buttons.south;
-          const east = !!input.buttons.east;
-          if (south && !p._southWasDown) world.scores[p.slot] = Math.min(10, world.scores[p.slot] + 1);
-          if (east && !p._eastWasDown) world.scores[p.slot] = Math.min(10, world.scores[p.slot] + 2);
-          p._southWasDown = south;
-          p._eastWasDown = east;
+      function drawResults(w, h) {
+        const ordered = world.players.slice().sort((a, b) => world.scores[b.slot] - world.scores[a.slot]);
+        const winner = ordered[0];
+
+        ctx2d.fillStyle = "rgba(0,0,0,0.6)";
+        ctx2d.fillRect(0, 0, w, h);
+        ctx2d.fillStyle = "#fff";
+        ctx2d.textAlign = "center";
+        ctx2d.font = "900 52px ui-sans-serif, system-ui";
+        ctx2d.fillText(winner ? `${winner.name} Wins!` : "Results", w * 0.5, h * 0.24);
+        ctx2d.font = "700 24px ui-sans-serif, system-ui";
+        ctx2d.fillText("Points gained", w * 0.5, h * 0.34);
+
+        let y = h * 0.44;
+        for (const p of ordered) {
+          ctx2d.fillStyle = p.color;
+          ctx2d.fillRect(w * 0.34, y - 12, 14, 14);
+          ctx2d.fillStyle = "rgba(255,255,255,0.95)";
+          ctx2d.textAlign = "left";
+          ctx2d.font = "700 22px ui-sans-serif, system-ui";
+          ctx2d.fillText(`${p.name}`, w * 0.37, y);
+          ctx2d.textAlign = "right";
+          ctx2d.fillText(String(world.scores[p.slot] || 0), w * 0.66, y);
+          y += 34;
         }
+      }
 
-        // win condition: any player reaches 10
-        if (world.scores.some((s) => s >= 10)) {
-          Maribro.endGame(world.scores);
-          return;
+      function draw() {
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        drawBackdrop(w, h);
+        drawPlayers();
+        drawTimer(w);
+
+        if (world.phase === "countdown") drawCountdown(w, h);
+        if (world.phase === "results") drawResults(w, h);
+      }
+
+      function finalizeScores() {
+        if (world.scores.some((s) => s > 0)) return;
+        const ranked = world.players.slice().sort((a, b) => b.x - a.x);
+        for (let i = 0; i < ranked.length; i++) {
+          world.scores[ranked[i].slot] = Math.max(0, 10 - i * 3);
+        }
+      }
+
+      function beginResults() {
+        if (world.phase === "results") return;
+        finalizeScores();
+        world.phase = "results";
+      }
+
+      let last = performance.now();
+      function step(now) {
+        const dtMs = Math.min(40, now - last);
+        last = now;
+
+        if (world.phase === "countdown") {
+          world.countdownMs = Math.max(0, world.countdownMs - dtMs);
+          if (world.countdownMs <= 0) world.phase = "gameplay";
+        } else if (world.phase === "gameplay") {
+          for (const p of world.players) {
+            const input = Maribro.getInput(p.slot);
+            p.x += input.axes.lx * 6;
+            p.y += input.axes.ly * 6;
+            p.x = Math.max(24, Math.min(window.innerWidth - 24, p.x));
+            p.y = Math.max(24, Math.min(window.innerHeight - 24, p.y));
+
+            const south = !!input.buttons.south;
+            const east = !!input.buttons.east;
+            if (south && !p._southWasDown) world.scores[p.slot] = Math.min(10, world.scores[p.slot] + 1);
+            if (east && !p._eastWasDown) world.scores[p.slot] = Math.min(10, world.scores[p.slot] + 2);
+            p._southWasDown = south;
+            p._eastWasDown = east;
+          }
+
+          if (world.scores.some((s) => s >= 10) || Maribro.getTimeRemainingMs() <= 0) {
+            beginResults();
+          }
+        } else if (world.phase === "results") {
+          world.resultsMs = Math.max(0, world.resultsMs - dtMs);
+          if (world.resultsMs <= 0 && !world.reported) {
+            world.reported = true;
+            Maribro.endGame(world.scores);
+            return;
+          }
         }
 
         draw();
@@ -196,4 +274,3 @@
     </script>
   </body>
 </html>
-

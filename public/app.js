@@ -287,7 +287,7 @@ function startGame(game) {
   $("endGameBtn").classList.remove("hidden");
 
   const startedAtMs = performance.now();
-  const maxDurationSec = Number(game.maxDurationSec || 90);
+  const maxDurationSec = Number(game.maxDurationSec || 30);
 
   state.activeRun = {
     gameId: game.id,
@@ -463,4 +463,3 @@ main().catch((e) => {
   console.error(e);
   setStatus(`Error: ${e.message}`);
 });
-

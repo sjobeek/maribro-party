@@ -119,7 +119,7 @@ V1 minigames are:
 - **SDK required**: games must include:
 
 ```html
-<script src="/maribro-sdk.js"></script>
+<script src="/public/maribro-sdk.js"></script>
 ```
 
 The SDK provides:

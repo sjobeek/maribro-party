@@ -48,8 +48,9 @@ Do not stop after one round of fixes. Keep iterating until verification passes.
 - **Has rendering target** -- Canvas element or substantial DOM content
 - **Has score reporting** -- Posts scores back to the host via the SDK or postMessage
 - **Supports 4 players** -- Handles player indices 0-3
-- **Uses the SDK (required)** -- Includes `/maribro-sdk.js` so input/scoring/audio/mock mode are consistent
+- **Uses the SDK (required)** -- Includes `/public/maribro-sdk.js` so input/scoring/audio/mock mode are consistent
 - **Runtime completion flow** -- Verification must run the game in a browser, simulate inputs, and confirm the game actually reaches completion and calls `endGame` with scores.
+- **Round flow compliance** -- Game includes a 3-second start countdown and an end winner/results screen with scores before calling `Maribro.endGame(...)`.
 
 ## Warnings (non-blocking)
 

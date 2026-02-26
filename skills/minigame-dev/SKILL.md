@@ -25,11 +25,11 @@ Start a local dev server from the repo root if not already running. Open the gam
 
 ### 3. Iterate
 
-Edit the game file, refresh the browser, repeat. Focus on making it fun in 30-90 seconds with 4 players.
+Edit the game file, refresh the browser, repeat. Focus on making it fun in ~30 seconds by default (unless the user asks for a different duration) with 4 players.
 
-By default, encourage a lightweight round structure (unless the vibe-coder prefers otherwise):
+Use this required round structure:
 
-- Short start countdown (about 2-3 seconds) so players can get ready.
+- 3-second start countdown so players can get ready.
 - Main gameplay phase.
 - Short winner/results screen (about 2-4 seconds) that clearly shows points gained per player before ending the game.
 
@@ -57,12 +57,12 @@ When helping a user create a minigame:
 
 1. **Use the init-game skill** to scaffold the game. It handles gathering the concept, avatar ID, file creation, and dev server.
 2. Implement the game with all 4 players, shared-screen rendering, and controller input.
-3. Keep it simple -- completable in 30-90 seconds.
-4. Use the SDK helpers where possible.
-5. Test locally in the browser (mock mode).
-6. **Use the verify skill** proactively during development, not just at export time.
-7. When the user is happy and verification passes, export to the host.
-8. Recommend small transition screens (start countdown + winner/results) as a default UX pattern, but let the vibe-coder opt out.
+3. Ensure the game includes the SDK with `<script src="/public/maribro-sdk.js"></script>`.
+4. Keep it simple -- completable in ~30 seconds by default unless the user requests otherwise.
+5. Use the SDK helpers where possible.
+6. Test locally in the browser (mock mode).
+7. **Use the verify skill** proactively during development, not just at export time.
+8. When the user is happy and verification passes, export to the host.
+9. Require the transition screens: 3-second start countdown plus winner/results screen before `Maribro.endGame(...)`.
 
 **IMPORTANT:** Never attempt to export without running the verify skill first.
-

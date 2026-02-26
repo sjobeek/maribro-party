@@ -79,7 +79,7 @@ All JSON responses use this envelope:
   - `description: string`
   - `author: string`
   - `creatorAvatarId: string`
-  - `maxDurationSec: number` (default 90)
+  - `maxDurationSec: number` (default 30)
   - `uploadedAt: string` (ISO)
 
 **`POST /api/games`** -- Upload a new minigame (multipart).
@@ -100,7 +100,7 @@ All JSON responses use this envelope:
   - Parseable HTML (best-effort)
   - **No external resources**:
     - Disallow any `http://`, `https://`, or protocol-relative `//...` in `src=` / `href=`
-    - Allow exactly one same-origin SDK script reference: `maribro-sdk.js` or `/maribro-sdk.js`
+    - Allow the canonical same-origin SDK script reference: `/public/maribro-sdk.js`
     - For other `src=` (images/audio/video), require `data:` URIs (single-file artifact)
 
 **`GET /api/session`** -- Current session state.
@@ -163,13 +163,18 @@ The host enforces timer and records scores. Vibe-coder laptops only run games lo
 
 **V1 SDK requirement (authoritative):** minigames MUST include the SDK:
 
-`<script src="/maribro-sdk.js"></script>`
+`<script src="/public/maribro-sdk.js"></script>`
 
 This is required so gameplay, scoring, timer, audio, and mock mode behave consistently across games.
 
+**V1 round flow requirement (authoritative):**
+
+- Games must show a 3-second start countdown before live gameplay input begins.
+- Games must show a winner/results screen with scores before calling `Maribro.endGame(...)`.
+
 ### Metadata
 
-Games declare metadata via `<meta>` tags in `<head>` (title, description, author, max duration). All optional -- the host uses filename as fallback for title, and 90s as default max duration.
+Games declare metadata via `<meta>` tags in `<head>` (title, description, author, max duration). All optional -- the host uses filename as fallback for title, and 30s as default max duration.
 
 ### Communication Protocol
 
@@ -224,7 +229,7 @@ V1 requires the SDK. It wraps the postMessage protocol and Gamepad API into a cl
 
 ### SDK API (authoritative for V1)
 
-Games can use `public/maribro-sdk.js`, which exposes `window.Maribro`:
+Games can use `/public/maribro-sdk.js`, which exposes `window.Maribro`:
 
 - `Maribro.onReady((ctx)=>void)`
   - `ctx.playersBySlot`

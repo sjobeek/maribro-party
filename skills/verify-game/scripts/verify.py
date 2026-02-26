@@ -72,8 +72,10 @@ def _run_runtime_flow_check(game_path: Path) -> tuple[str, str]:
 
     with tempfile.TemporaryDirectory(prefix="maribro-verify-") as td:
         root = Path(td)
+        (root / "public").mkdir(parents=True, exist_ok=True)
         shutil.copy2(game_path, root / "game.html")
         shutil.copy2(sdk_src, root / "maribro-sdk.js")
+        shutil.copy2(sdk_src, root / "public" / "maribro-sdk.js")
 
         handler = lambda *args, **kwargs: QuietHandler(*args, directory=str(root), **kwargs)
         server = ReusableTCPServer(("127.0.0.1", 0), handler)
@@ -270,7 +272,7 @@ def main(argv: list[str]) -> int:
         v = v.strip()
         if not v or v.startswith("#"):
             continue
-        if v in ("maribro-sdk.js", "/maribro-sdk.js"):
+        if v == "/public/maribro-sdk.js":
             continue
         if v.startswith("data:"):
             continue
@@ -294,7 +296,7 @@ def main(argv: list[str]) -> int:
         ok("uses_sdk")
     else:
         had_fail = True
-        fail("uses_sdk", "SDK is required: include <script src=\"/maribro-sdk.js\"></script>")
+        fail("uses_sdk", "SDK is required: include <script src=\"/public/maribro-sdk.js\"></script>")
 
     has_end = ("maribro.endgame" in lower) or ("maribro:game_end" in lower) or ("postmessage" in lower)
     if has_end:

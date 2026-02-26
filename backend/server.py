@@ -143,11 +143,11 @@ def _get_game_metadata(filename: str, html: str, uploaded_at_iso: Optional[str])
     description = pick(["maribro:description", "description"], fallback="")
     author = pick(["maribro:author", "author"], fallback="")
     creator_avatar_id = pick(["maribro:creatorAvatarId", "creatorAvatarId"], fallback="")
-    max_dur_raw = pick(["maribro:maxDurationSec", "maxDurationSec"], fallback="90")
+    max_dur_raw = pick(["maribro:maxDurationSec", "maxDurationSec"], fallback="30")
     try:
         max_dur = int(float(max_dur_raw))
     except Exception:
-        max_dur = 90
+        max_dur = 30
 
     return {
         "id": Path(filename).stem,
@@ -192,7 +192,7 @@ def _validate_game_html_bytes(raw: bytes) -> str:
         v = v.strip()
         if not v:
             continue
-        if v in ("maribro-sdk.js", "/maribro-sdk.js"):
+        if v == "/public/maribro-sdk.js":
             continue
         # Allow fragment links and in-page references.
         if v.startswith("#"):
@@ -423,4 +423,5 @@ def api_avatars() -> Dict[str, Any]:
 
 # Static serving is mounted last so `/api/*` routes win.
 app.mount("/games", StaticFiles(directory=str(GAMES_DIR), html=True), name="games")
+app.mount("/public", StaticFiles(directory=str(PUBLIC_DIR), html=True), name="public-files")
 app.mount("/", StaticFiles(directory=str(PUBLIC_DIR), html=True), name="public")
