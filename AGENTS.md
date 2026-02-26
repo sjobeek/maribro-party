@@ -32,7 +32,7 @@ Participant “types” are hats. One person can be all of these in a single nig
 ## The Core Loop
 
 ```
-Lobby → Vote on next game → Minigame (30-90s) → Results + Scores → Lobby
+Lobby → Vote on next game → Minigame (~30s default) → Results + Scores → Lobby
          ↑                                                          |
          └──── new games appear as vibe-coders submit them ─────────┘
 ```
@@ -49,8 +49,10 @@ A minigame must:
 - Render into the full viewport
 - Support 4 players
 - Read controller input (via a shared SDK or the Gamepad API directly)
+- Include a **3-second delayed countdown** before gameplay starts
 - Signal completion by posting scores back to the host
-- Be completable in 30-90 seconds
+- Show a **victory/results screen** at the end that displays player scores before exiting
+- Be completable in ~30 seconds by default (`maxDurationSec` should default to `30` unless explicitly overridden)
 
 Games can end themselves, but the host enforces a max timer as a safety net.
 
@@ -93,6 +95,9 @@ V1 clarifications (do not deviate unless you update the contract in `docs/design
 - Iframe communication: all messages are `{ type, payload }` and use the `maribro:*` types in the design doc.
 - SDK requirement: **all minigames must include** `<script src="/maribro-sdk.js"></script>`.
 - 2+ players: games should use `ctx.activeSlots` / `Maribro.getActiveSlots()` and “run” with 2+ active slots (inactive slots should be ignored/idle).
+- Duration default: new minigames should set `<meta name="maxDurationSec" content="30" />` unless the user explicitly asks for a different duration.
+- Start flow requirement: all game implementations must have a 3-second countdown before live input/gameplay begins.
+- End flow requirement: all game implementations must show a victory/results screen with scores before calling `Maribro.endGame(...)`.
 - Audio (opt-in): if the user asks for sound, implement it via `Maribro.audio.playNote(...)`. **Implicit opt-in**: the first `playNote` call disables SDK fallback bloops automatically.
 
 ### Automated Verification (IMPORTANT)
@@ -105,9 +110,11 @@ The host is expected to use an AI coding agent. Humans should say “start the h
 
 - Dependency tool: **use `uv`** (assumed available on host + vibe-coder machines).
 - Install deps: `uv sync`
-- Run server: `uv run uvicorn backend.server:app --port 8000`
+- Run durable host session (server + tunnel in tmux): `bash skills/host-server/scripts/setup_host_tmux.sh 0.0.0.0 8000`
 - Open host UI in Chrome: `http://localhost:8000`
-- Default sharing mode: run `cloudflared tunnel --url http://localhost:8000` and share the tunnel URL.
+- Restart host server (preferred for updates/re-init, tunnel URL preserved): `bash skills/host-server/scripts/restart_host_tmux.sh 0.0.0.0 8000`
+- Stop host session (URL-disruptive, requires confirmation): `bash skills/host-server/scripts/stop_host_tmux.sh --yes`
+- Observe logs: `tmux attach -t maribro-host` (session name override: `MARIBRO_HOST_TMUX_SESSION`)
 - Upload token: server requires token for `POST /api/games` (default `maribro-upload`, override with `MARIBRO_UPLOAD_TOKEN`)
 - Vibe-coder export flow:
   - Verify: `uv run python3 skills/verify-game/scripts/verify.py games/<your-game>.html`

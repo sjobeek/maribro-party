@@ -31,8 +31,8 @@ Participant “types” are hats. One person can be all of these in a single nig
    - **“Run the host server and tell me what URL to open”**
 3. The agent should install/run using `uv`, then tell you what to open in Chrome:
    - usually `http://localhost:8000`
-4. Start cloudflared tunnel (default sharing mode) and share that URL with phones/vibe-coders:
-   - `cloudflared tunnel --url http://localhost:8000`
+4. Start the durable host tmux session (server + tunnel windows) and share the printed tunnel URL:
+   - `bash skills/host-server/scripts/setup_host_tmux.sh 0.0.0.0 8000`
 5. Connect controllers and assign players/avatars in the UI.
 6. Tell vibe-coders the host URL (prefer tunnel URL) so they can say **“send it”**.
 
@@ -76,14 +76,22 @@ After “send it”, the game appears in the host lobby and can be played immedi
 
 ### Host run commands (what the host agent executes)
 
-From the repo root:
+From the repo root (durable default):
 
 ```bash
 uv sync
-uv run uvicorn backend.server:app --port 8000
+bash skills/host-server/scripts/setup_host_tmux.sh 0.0.0.0 8000
 ```
 
 Then open: `http://localhost:8000`
+
+Useful host lifecycle commands:
+
+```bash
+bash skills/host-server/scripts/restart_host_tmux.sh 0.0.0.0 8000
+bash skills/host-server/scripts/stop_host_tmux.sh --yes
+tmux attach -t maribro-host
+```
 
 If host token is customized:
 

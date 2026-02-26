@@ -9,38 +9,50 @@ description: Starts, checks, and debugs the Maribro host server (backend.server)
 
 Run the host server reliably and expose it through cloudflared by default.
 
-## Start Server
+## Setup Host Session (Default)
 
 From repo root:
 
 ```bash
-bash skills/host-server/scripts/start_host_server.sh 0.0.0.0 8000
+bash skills/host-server/scripts/setup_host_tmux.sh 0.0.0.0 8000
 ```
 
 Notes:
-- Keep this terminal open while hosting.
-- On WSL, this is the most reliable bind mode for Windows browser access.
+- Creates (or reuses) one tmux session with one window per process: `host`, `tunnel`.
+- Session name defaults to `maribro-host` and can be overridden with `MARIBRO_HOST_TMUX_SESSION`.
+- If a window already has a live process, setup leaves it running (keeps quick tunnel URL stable).
 
-## Start Tunnel (Default Sharing Mode)
-
-In a second terminal from repo root:
-
-```bash
-bash skills/host-server/scripts/start_tunnel.sh 8000
-```
-
-Use the generated `https://...trycloudflare.com` URL as the default URL to share with phones and vibe-coders.
-
-## Restart Server
+## Restart Host Session
 
 From repo root:
 
 ```bash
-bash skills/host-server/scripts/restart_host_server.sh 0.0.0.0 8000
+bash skills/host-server/scripts/restart_host_tmux.sh 0.0.0.0 8000
 ```
 
-This stops any existing host process on the port, then starts a fresh one.
-It does **not** restart `cloudflared`, so the tunnel URL stays the same as long as the tunnel process keeps running.
+- Preferred way to apply server updates or re-initialize host backend.
+- Restarts only the `host` window; leaves `tunnel` running so quick tunnel URL remains stable.
+- Creates the tmux session + windows if missing.
+
+## Stop Host Session
+
+From repo root:
+
+```bash
+bash skills/host-server/scripts/stop_host_tmux.sh
+```
+
+- Stops all host-related processes by killing the tmux session.
+- Safe to run even if the session is already absent.
+- Safety gate: stop requires explicit confirmation (`--yes` for non-interactive agent runs).
+
+## Live Visibility
+
+Attach to see logs in real time:
+
+```bash
+tmux attach -t maribro-host
+```
 
 ## Debug / Health Check
 
@@ -58,9 +70,9 @@ The debug script checks:
 
 ## Agent Loop
 
-1. Start/restart server with `start_host_server.sh` or `restart_host_server.sh`.
+1. Setup/restart host with `setup_host_tmux.sh` or `restart_host_tmux.sh`.
 2. Run `debug_host_server.sh` and confirm `READY`.
-3. Start `start_tunnel.sh` and copy the tunnel URL.
+3. Copy the tunnel URL from setup/restart output or from tmux `tunnel` window logs.
 4. If output includes `ACTION_REQUIRED`, apply the suggested fix and retry.
 
 ## If Dependencies Are Missing

@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+
+    <meta name="title" content="Cat Dog Dash" />
+    <meta name="description" content="Race cats down the lane and jump over charging dogs." />
+    <meta name="author" content="maribro-party" />
+    <meta name="maxDurationSec" content="30" />
+    <meta name="creatorAvatarId" content="knight-red" />
+
+    <title>Cat Dog Dash</title>
+    <script src="/maribro-sdk.js"></script>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #f6f4ea;
+        font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+      }
+      #c {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      .hud {
+        position: fixed;
+        left: 12px;
+        top: 10px;
+        padding: 8px 12px;
+        border-radius: 12px;
+        background: rgba(0, 0, 0, 0.4);
+        color: #fff;
+        font-weight: 700;
+        font-size: 14px;
+        letter-spacing: 0.2px;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+    <div class="hud">Cat Dog Dash: tap south to sprint, east/north/up to jump.</div>
+
+    <script>
+      const canvas = document.getElementById("c");
+      const g = canvas.getContext("2d");
+
+      const world = {
+        players: [],
+        activeSlots: [],
+        dogs: [],
+        totalDurationMs: 30000,
+        finished: false,
+        resultActive: false,
+        resultEndAtMs: 0,
+        resultScores: null,
+        resultTitle: "",
+      };
+
+      function resize() {
+        const dpr = Math.max(1, window.devicePixelRatio || 1);
+        canvas.width = Math.floor(window.innerWidth * dpr);
+        canvas.height = Math.floor(window.innerHeight * dpr);
+        canvas.style.width = window.innerWidth + "px";
+        canvas.style.height = window.innerHeight + "px";
+        g.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        const laneTop = window.innerHeight * 0.22;
+        const laneH = window.innerHeight * 0.56;
+        for (let i = 0; i < world.players.length; i++) {
+          world.players[i].laneTop = laneTop;
+          world.players[i].laneH = laneH;
+        }
+      }
+      window.addEventListener("resize", resize);
+      resize();
+
+      function spawnDog(x, speedBonus) {
+        const laneTop = window.innerHeight * 0.22;
+        const laneH = window.innerHeight * 0.56;
+        const roadY = laneTop + laneH - 24;
+        const speedScale = typeof speedBonus === "number" ? speedBonus : 0;
+        world.dogs.push({
+          x,
+          y: roadY,
+          w: 44 + Math.random() * 14,
+          h: 26 + Math.random() * 10,
+          speed: 220 + Math.random() * 80 + speedScale * 180,
+        });
+      }
+
+      function maybeSpawnDogs(dt) {
+        const remaining = Math.max(0, Maribro.getTimeRemainingMs());
+        const progress = 1 - Math.max(0, Math.min(1, remaining / world.totalDurationMs));
+        const floodMode = remaining <= 3500;
+        const dynamicCap = floodMode ? 999 : 2 + Math.floor(progress * 4);
+        if (world.dogs.length >= dynamicCap) return;
+
+        const spawnRate = 0.35 + progress * 1.9;
+        const spacingGate = window.innerWidth * (0.94 - progress * 0.34);
+        let nearest = Infinity;
+        for (const dog of world.dogs) nearest = Math.min(nearest, dog.x);
+
+        if (floodMode) {
+          const burstCount = 2 + Math.floor((3500 - remaining) / 900);
+          for (let i = 0; i < burstCount; i++) {
+            if (Math.random() < dt * (spawnRate + 2.4)) {
+              spawnDog(window.innerWidth + 60 + Math.random() * 140, progress);
+            }
+          }
+          return;
+        }
+
+        if (nearest > spacingGate && Math.random() < dt * spawnRate) {
+          spawnDog(window.innerWidth + 120 + Math.random() * 220, progress);
+        }
+      }
+
+      function drawCat(p) {
+        const roadY = p.laneTop + p.laneH - 24;
+        const catX = 90 + p.distance * 0.55;
+        const clampedX = Math.min(window.innerWidth - 120, catX);
+        const catY = roadY - p.jumpY + p.rowOffset;
+
+        g.fillStyle = p.color;
+        g.beginPath();
+        g.ellipse(clampedX, catY - 14, 20, 14, 0, 0, Math.PI * 2);
+        g.fill();
+
+        g.beginPath();
+        g.moveTo(clampedX - 13, catY - 24);
+        g.lineTo(clampedX - 3, catY - 36);
+        g.lineTo(clampedX + 2, catY - 24);
+        g.closePath();
+        g.fill();
+
+        g.beginPath();
+        g.moveTo(clampedX + 6, catY - 24);
+        g.lineTo(clampedX + 16, catY - 36);
+        g.lineTo(clampedX + 20, catY - 24);
+        g.closePath();
+        g.fill();
+
+        g.fillStyle = "#111";
+        g.beginPath();
+        g.arc(clampedX + 7, catY - 15, 2, 0, Math.PI * 2);
+        g.fill();
+
+        g.strokeStyle = "#111";
+        g.lineWidth = 2;
+        g.beginPath();
+        g.moveTo(clampedX + 16, catY - 10);
+        g.quadraticCurveTo(clampedX + 34, catY - 14, clampedX + 24, catY - 1);
+        g.stroke();
+
+        g.fillStyle = "rgba(0,0,0,0.7)";
+        g.font = "700 14px Trebuchet MS, sans-serif";
+        g.textAlign = "left";
+        g.fillText(`${p.name}  ${Math.floor(p.distance)}m`, 12, p.hudY);
+
+        if (p.dead) {
+          g.fillStyle = "rgba(160,0,0,0.9)";
+          g.fillText("OUT!", clampedX + 30, catY - 18);
+        }
+      }
+
+      function drawDog(dog) {
+        g.fillStyle = "#5a3f2f";
+        g.fillRect(dog.x - dog.w * 0.5, dog.y - dog.h, dog.w, dog.h);
+        g.fillStyle = "#3b281c";
+        g.fillRect(dog.x + dog.w * 0.22, dog.y - dog.h * 0.55, dog.w * 0.34, dog.h * 0.24);
+
+        g.fillStyle = "#f2eadf";
+        g.fillRect(dog.x + dog.w * 0.44, dog.y - dog.h * 0.44, dog.w * 0.08, dog.h * 0.08);
+      }
+
+      function draw() {
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        g.clearRect(0, 0, w, h);
+
+        const sky = g.createLinearGradient(0, 0, 0, h);
+        sky.addColorStop(0, "#fff8d8");
+        sky.addColorStop(1, "#ffe8bf");
+        g.fillStyle = sky;
+        g.fillRect(0, 0, w, h);
+
+        const laneTop = window.innerHeight * 0.22;
+        const laneH = window.innerHeight * 0.56;
+        const roadY = laneTop + laneH - 24;
+
+        g.fillStyle = "rgba(255,255,255,0.35)";
+        g.fillRect(0, laneTop, w, laneH - 2);
+        g.fillStyle = "#6b7d53";
+        g.fillRect(0, roadY, w, 24);
+
+        g.strokeStyle = "rgba(255,255,255,0.35)";
+        g.lineWidth = 2;
+        g.setLineDash([10, 10]);
+        g.beginPath();
+        g.moveTo(0, roadY + 12);
+        g.lineTo(w, roadY + 12);
+        g.stroke();
+        g.setLineDash([]);
+
+        for (const dog of world.dogs) drawDog(dog);
+        for (const p of world.players) drawCat(p);
+
+        g.fillStyle = "rgba(0,0,0,0.55)";
+        g.font = "900 20px Trebuchet MS, sans-serif";
+        g.textAlign = "right";
+        g.fillText(`${Math.ceil(Maribro.getTimeRemainingMs() / 1000)}s`, w - 14, 28);
+      }
+
+      function computeScores() {
+        const scores = [0, 0, 0, 0];
+        const alive = world.players.filter((p) => !p.dead).sort((a, b) => b.distance - a.distance);
+        for (const p of world.players) {
+          if (p.dead) scores[p.slot] = 0;
+        }
+        for (let i = 0; i < alive.length; i++) {
+          const points = Math.max(0, 10 - i * 2);
+          scores[alive[i].slot] = points;
+        }
+        return { scores, alive };
+      }
+
+      function drawVictoryOverlay(now) {
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        const remain = Math.max(0, world.resultEndAtMs - now);
+
+        g.fillStyle = "rgba(0,0,0,0.45)";
+        g.fillRect(0, 0, w, h);
+
+        g.fillStyle = "rgba(255,255,255,0.92)";
+        g.fillRect(w * 0.24, h * 0.28, w * 0.52, h * 0.36);
+
+        g.strokeStyle = "rgba(0,0,0,0.18)";
+        g.lineWidth = 3;
+        g.strokeRect(w * 0.24, h * 0.28, w * 0.52, h * 0.36);
+
+        g.fillStyle = "#161616";
+        g.textAlign = "center";
+        g.font = "900 56px Trebuchet MS, sans-serif";
+        g.fillText(world.resultTitle, w * 0.5, h * 0.45);
+
+        g.font = "700 24px Trebuchet MS, sans-serif";
+        g.fillText(`Next game in ${Math.max(1, Math.ceil(remain / 1000))}...`, w * 0.5, h * 0.56);
+      }
+
+      function startResults(now) {
+        if (world.resultActive) return;
+        world.resultActive = true;
+        world.resultEndAtMs = now + 2200;
+        const result = computeScores();
+        world.resultScores = result.scores;
+        world.resultTitle = result.alive.length ? `${result.alive[0].name} Wins!` : "No Cat Survived";
+      }
+
+      function finishGame() {
+        if (world.finished) return;
+        world.finished = true;
+
+        const result = computeScores();
+        const scores = world.resultActive && world.resultScores ? world.resultScores : result.scores;
+        Maribro.endGame(scores);
+      }
+
+      function overlaps(catX, catY, dog) {
+        const catW = 40;
+        const catH = 30;
+        const catLeft = catX - catW * 0.5;
+        const catTop = catY - catH;
+        const dogLeft = dog.x - dog.w * 0.5;
+        const dogTop = dog.y - dog.h;
+        return !(catLeft + catW < dogLeft || catLeft > dogLeft + dog.w || catTop + catH < dogTop || catTop > dogTop + dog.h);
+      }
+
+      let last = performance.now();
+      function step(now) {
+        const dt = Math.min(0.04, (now - last) / 1000);
+        last = now;
+
+        if (world.resultActive) {
+          draw();
+          drawVictoryOverlay(now);
+          if (now >= world.resultEndAtMs) {
+            finishGame();
+            return;
+          }
+          requestAnimationFrame(step);
+          return;
+        }
+
+        maybeSpawnDogs(dt);
+
+        for (const dog of world.dogs) dog.x -= dog.speed * dt;
+        world.dogs = world.dogs.filter((d) => d.x + d.w > -40);
+
+        for (const p of world.players) {
+          if (p.dead) continue;
+          const input = Maribro.getInput(p.slot);
+          const sprintTap = !!input.buttons.south;
+          const jumpPressed = !!input.buttons.east || !!input.buttons.north || !!input.buttons.dup;
+
+          if (sprintTap && !p.wasSprintDown) p.stamina = Math.min(1, p.stamina + 0.13);
+          p.wasSprintDown = sprintTap;
+
+          if (jumpPressed && !p.jumpHeld && p.jumpY <= 0.001) {
+            p.jumpV = 400;
+            Maribro.audio.playNote({ note: 76 + p.slot * 2, velocity: 0.2, durationMs: 90, instrument: "triangle" });
+          }
+          p.jumpHeld = jumpPressed;
+
+          p.stamina = Math.max(0, p.stamina - dt * 0.18);
+
+          p.jumpV -= 920 * dt;
+          p.jumpY += p.jumpV * dt;
+          if (p.jumpY < 0) {
+            if (p.jumpV < -120) p.cleanJumps += 1;
+            p.jumpY = 0;
+            p.jumpV = 0;
+          }
+
+          const baseSpeed = 130;
+          const sprintBoost = 170 * p.stamina;
+          const speed = Math.max(50, baseSpeed + sprintBoost);
+          p.distance += speed * dt * 0.06;
+
+          const roadY = p.laneTop + p.laneH - 24;
+          const catX = Math.min(window.innerWidth - 120, 90 + p.distance * 0.55);
+          const catY = roadY - p.jumpY;
+
+          for (const dog of world.dogs) {
+            if (!overlaps(catX, catY, dog)) continue;
+            if (p.jumpY > dog.h * 0.8) {
+              if (!dog._countedBy || !dog._countedBy[p.slot]) {
+                dog._countedBy = dog._countedBy || {};
+                dog._countedBy[p.slot] = true;
+                p.cleanJumps += 1;
+                Maribro.audio.playNote({ note: 84 + p.slot, velocity: 0.25, durationMs: 70, instrument: "square" });
+              }
+            } else {
+              p.dead = true;
+              Maribro.audio.playNote({ note: 40, velocity: 0.22, durationMs: 120, instrument: "noise" });
+              break;
+            }
+          }
+        }
+
+        const aliveCount = world.players.filter((p) => !p.dead).length;
+        if (aliveCount <= 1) {
+          startResults(now);
+        }
+
+        if (Maribro.getTimeRemainingMs() <= 0) {
+          startResults(now);
+        }
+
+        draw();
+        if (world.resultActive) drawVictoryOverlay(now);
+        requestAnimationFrame(step);
+      }
+
+      Maribro.onReady((ctx) => {
+        world.activeSlots = Array.isArray(ctx.activeSlots) && ctx.activeSlots.length >= 2 ? ctx.activeSlots.slice() : Maribro.getActiveSlots();
+        world.totalDurationMs = Math.max(3000, (ctx.maxDurationSec || 30) * 1000);
+
+        const playersBySlot = (ctx.playersBySlot || []).filter((p) => world.activeSlots.includes(p.slot));
+        const laneTop = window.innerHeight * 0.22;
+        const laneH = window.innerHeight * 0.56;
+        const center = (Math.max(2, playersBySlot.length) - 1) * 0.5;
+
+        world.players = playersBySlot.map((p, i) => ({
+          slot: p.slot,
+          laneTop,
+          laneH,
+          rowOffset: (i - center) * 16,
+          hudY: 30 + i * 18,
+          name: p.name || `P${p.slot + 1}`,
+          color: p.color || "#ffffff",
+          distance: 0,
+          stamina: 0.2,
+          jumpY: 0,
+          jumpV: 0,
+          jumpHeld: false,
+          wasSprintDown: false,
+          dead: false,
+          cleanJumps: 0,
+        }));
+
+        if (world.players.length < 2) {
+          const fallback = (ctx.playersBySlot || []).slice(0, 2);
+          const fallbackCenter = 0.5;
+          world.players = fallback.map((p, i) => ({
+            slot: p.slot ?? i,
+            laneTop,
+            laneH,
+            rowOffset: (i - fallbackCenter) * 16,
+            hudY: 30 + i * 18,
+            name: p.name || `P${(p.slot ?? i) + 1}`,
+            color: p.color || "#ffffff",
+            distance: 0,
+            stamina: 0.2,
+            jumpY: 0,
+            jumpV: 0,
+            jumpHeld: false,
+            wasSprintDown: false,
+            dead: false,
+            cleanJumps: 0,
+          }));
+        }
+
+        for (let i = 0; i < 1; i++) {
+          spawnDog(window.innerWidth + 420 + i * 420, 0);
+        }
+
+        resize();
+        requestAnimationFrame(step);
+      });
+    </script>
+  </body>
+</html>
